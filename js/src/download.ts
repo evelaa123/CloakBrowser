@@ -19,6 +19,8 @@ import {
   GITHUB_DOWNLOAD_BASE_URL,
   WRAPPER_VERSION,
   checkPlatformAvailable,
+  getArchiveExt,
+  getArchiveName,
   getBinaryDir,
   getBinaryPath,
   getCacheDir,
@@ -152,7 +154,7 @@ async function downloadAndExtract(version?: string): Promise<void> {
   // Download to temp file (atomic — no partial downloads in cache)
   const tmpPath = path.join(
     path.dirname(binaryDir),
-    `_download_${Date.now()}.tar.gz`
+    `_download_${Date.now()}${getArchiveExt()}`
   );
 
   try {
@@ -194,7 +196,7 @@ async function downloadAndExtract(version?: string): Promise<void> {
 
 async function verifyDownloadChecksum(filePath: string, version?: string): Promise<void> {
   const checksums = await fetchChecksums(version);
-  const tarballName = `cloakbrowser-${getPlatformTag()}.tar.gz`;
+  const tarballName = getArchiveName();
 
   if (!checksums) {
     console.warn("[cloakbrowser] SHA256SUMS not available for this release — skipping checksum verification");
@@ -342,23 +344,11 @@ async function extractArchive(
   }
   fs.mkdirSync(destDir, { recursive: true });
 
-  // Extract with tar — the 'tar' package handles symlink/traversal safety
-  await tarExtract({
-    file: archivePath,
-    cwd: destDir,
-    // Security: strip leading path components and reject absolute paths
-    strip: 0,
-    filter: (entryPath: string) => {
-      // Reject absolute paths and path traversal
-      if (path.isAbsolute(entryPath) || entryPath.includes("..")) {
-        console.warn(
-          `[cloakbrowser] Skipping suspicious archive entry: ${entryPath}`
-        );
-        return false;
-      }
-      return true;
-    },
-  });
+  if (archivePath.endsWith(".zip")) {
+    await extractZip(archivePath, destDir);
+  } else {
+    await extractTar(archivePath, destDir);
+  }
 
   // Flatten single subdirectory if needed
   flattenSingleSubdir(destDir);
@@ -376,6 +366,36 @@ async function extractArchive(
 
   if (fs.existsSync(bp)) {
     console.log(`[cloakbrowser] Binary ready: ${bp}`);
+  }
+}
+
+async function extractTar(archivePath: string, destDir: string): Promise<void> {
+  await tarExtract({
+    file: archivePath,
+    cwd: destDir,
+    strip: 0,
+    filter: (entryPath: string) => {
+      if (path.isAbsolute(entryPath) || entryPath.includes("..")) {
+        console.warn(
+          `[cloakbrowser] Skipping suspicious archive entry: ${entryPath}`
+        );
+        return false;
+      }
+      return true;
+    },
+  });
+}
+
+async function extractZip(archivePath: string, destDir: string): Promise<void> {
+  const { execFileSync } = await import("node:child_process");
+  // Use system unzip — available on Windows (PowerShell), macOS, and Linux
+  if (process.platform === "win32") {
+    execFileSync("powershell", [
+      "-NoProfile", "-Command",
+      `Expand-Archive -Path '${archivePath}' -DestinationPath '${destDir}' -Force`,
+    ], { timeout: 120_000 });
+  } else {
+    execFileSync("unzip", ["-o", archivePath, "-d", destDir], { timeout: 120_000 });
   }
 }
 
@@ -452,7 +472,7 @@ export async function getLatestChromiumVersion(): Promise<string | null> {
       draft: boolean;
       assets: Array<{ name: string }>;
     }>;
-    const platformTarball = `cloakbrowser-${getPlatformTag()}.tar.gz`;
+    const platformTarball = getArchiveName();
     for (const release of releases) {
       if (release.tag_name.startsWith("chromium-v") && !release.draft) {
         const assetNames = new Set(

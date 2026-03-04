@@ -27,13 +27,13 @@ export { WRAPPER_VERSION };
 // CHROMIUM_VERSION is the latest across all platforms (for display/reference).
 // Use getChromiumVersion() for the current platform's actual version.
 // ---------------------------------------------------------------------------
-export const CHROMIUM_VERSION = "145.0.7632.109";
+export const CHROMIUM_VERSION = "145.0.7632.109.2";
 
 export const PLATFORM_CHROMIUM_VERSIONS: Record<string, string> = {
-  "linux-x64": "145.0.7632.109",
-  "darwin-arm64": "145.0.7632.109",
-  "darwin-x64": "145.0.7632.109",
-  "windows-x64": "145.0.7632.109",
+  "linux-x64": "145.0.7632.109.2",
+  "darwin-arm64": "145.0.7632.109.2",
+  "darwin-x64": "145.0.7632.109.2",
+  "windows-x64": "145.0.7632.109.2",
 };
 
 // ---------------------------------------------------------------------------
@@ -126,16 +126,22 @@ export const GITHUB_API_URL =
 export const GITHUB_DOWNLOAD_BASE_URL =
   "https://github.com/CloakHQ/cloakbrowser/releases/download";
 
+export function getArchiveExt(): string {
+  return process.platform === "win32" ? ".zip" : ".tar.gz";
+}
+
+export function getArchiveName(tag?: string): string {
+  return `cloakbrowser-${tag || getPlatformTag()}${getArchiveExt()}`;
+}
+
 export function getDownloadUrl(version?: string): string {
   const v = version || getChromiumVersion();
-  const tag = getPlatformTag();
-  return `${DOWNLOAD_BASE_URL}/chromium-v${v}/cloakbrowser-${tag}.tar.gz`;
+  return `${DOWNLOAD_BASE_URL}/chromium-v${v}/${getArchiveName()}`;
 }
 
 export function getFallbackDownloadUrl(version?: string): string {
   const v = version || getChromiumVersion();
-  const tag = getPlatformTag();
-  return `${GITHUB_DOWNLOAD_BASE_URL}/chromium-v${v}/cloakbrowser-${tag}.tar.gz`;
+  return `${GITHUB_DOWNLOAD_BASE_URL}/chromium-v${v}/${getArchiveName()}`;
 }
 
 export function getEffectiveVersion(): string {

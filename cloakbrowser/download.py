@@ -28,6 +28,8 @@ from .config import (
     GITHUB_DOWNLOAD_BASE_URL,
     _version_newer,
     check_platform_available,
+    get_archive_ext,
+    get_archive_name,
     get_binary_dir,
     get_binary_path,
     get_cache_dir,
@@ -123,7 +125,7 @@ def _download_and_extract(version: str | None = None) -> None:
     binary_dir.parent.mkdir(parents=True, exist_ok=True)
 
     # Download to temp file first (atomic — no partial downloads in cache)
-    with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(suffix=get_archive_ext(), delete=False) as tmp:
         tmp_path = Path(tmp.name)
 
     try:
@@ -155,7 +157,7 @@ def _download_and_extract(version: str | None = None) -> None:
 def _verify_download_checksum(file_path: Path, version: str | None = None) -> None:
     """Fetch SHA256SUMS and verify the downloaded file. Warn if unavailable, fail on mismatch."""
     checksums = _fetch_checksums(version)
-    tarball_name = f"cloakbrowser-{get_platform_tag()}.tar.gz"
+    tarball_name = get_archive_name()
 
     if checksums is None:
         logger.warning("SHA256SUMS not available for this release — skipping checksum verification")
@@ -256,7 +258,7 @@ def _download_file(url: str, dest: Path) -> None:
 def _extract_archive(
     archive_path: Path, dest_dir: Path, binary_path: Path | None = None
 ) -> None:
-    """Extract tar.gz archive to destination directory."""
+    """Extract tar.gz or zip archive to destination directory."""
     logger.info("Extracting to %s", dest_dir)
 
     # Clean existing dir if partial download existed
@@ -266,26 +268,12 @@ def _extract_archive(
 
     dest_dir.mkdir(parents=True, exist_ok=True)
 
-    with tarfile.open(archive_path, "r:gz") as tar:
-        # Security: prevent path traversal
-        safe_members = []
-        for member in tar.getmembers():
-            # Allow symlinks — macOS .app bundles require them (Framework layout)
-            if member.issym() or member.islnk():
-                link_target = member.linkname
-                # Reject symlinks that escape the dest dir
-                if os.path.isabs(link_target) or ".." in link_target.split("/"):
-                    logger.warning("Skipping suspicious symlink: %s -> %s", member.name, link_target)
-                    continue
-            else:
-                member_path = (dest_dir / member.name).resolve()
-                if not str(member_path).startswith(str(dest_dir.resolve())):
-                    raise RuntimeError(f"Archive contains path traversal: {member.name}")
-            safe_members.append(member)
+    if str(archive_path).endswith(".zip"):
+        _extract_zip(archive_path, dest_dir)
+    else:
+        _extract_tar(archive_path, dest_dir)
 
-        tar.extractall(dest_dir, members=safe_members)
-
-    # If tar extracted into a single subdirectory, flatten it
+    # If extracted into a single subdirectory, flatten it
     # (e.g. fingerprint-chromium-142-custom-v2/chrome → chrome)
     # But never flatten .app bundles — macOS needs the bundle structure intact
     _flatten_single_subdir(dest_dir)
@@ -301,6 +289,38 @@ def _extract_archive(
 
     if bp.exists():
         logger.info("Binary ready: %s", bp)
+
+
+def _extract_tar(archive_path: Path, dest_dir: Path) -> None:
+    """Extract tar.gz archive with path traversal protection."""
+    with tarfile.open(archive_path, "r:gz") as tar:
+        safe_members = []
+        for member in tar.getmembers():
+            # Allow symlinks — macOS .app bundles require them (Framework layout)
+            if member.issym() or member.islnk():
+                link_target = member.linkname
+                if os.path.isabs(link_target) or ".." in link_target.split("/"):
+                    logger.warning("Skipping suspicious symlink: %s -> %s", member.name, link_target)
+                    continue
+            else:
+                member_path = (dest_dir / member.name).resolve()
+                if not str(member_path).startswith(str(dest_dir.resolve())):
+                    raise RuntimeError(f"Archive contains path traversal: {member.name}")
+            safe_members.append(member)
+
+        tar.extractall(dest_dir, members=safe_members)
+
+
+def _extract_zip(archive_path: Path, dest_dir: Path) -> None:
+    """Extract zip archive with path traversal protection."""
+    import zipfile
+
+    with zipfile.ZipFile(archive_path, "r") as zf:
+        for info in zf.infolist():
+            member_path = (dest_dir / info.filename).resolve()
+            if not str(member_path).startswith(str(dest_dir.resolve())):
+                raise RuntimeError(f"Archive contains path traversal: {info.filename}")
+        zf.extractall(dest_dir)
 
 
 def _flatten_single_subdir(dest_dir: Path) -> None:
@@ -435,7 +455,7 @@ def _get_latest_chromium_version() -> str | None:
             GITHUB_API_URL, params={"per_page": 10}, timeout=10.0
         )
         resp.raise_for_status()
-        platform_tarball = f"cloakbrowser-{get_platform_tag()}.tar.gz"
+        platform_tarball = get_archive_name()
         for release in resp.json():
             tag = release.get("tag_name", "")
             if tag.startswith("chromium-v") and not release.get("draft"):

@@ -15,13 +15,13 @@ from ._version import __version__
 # CHROMIUM_VERSION is the latest across all platforms (for display/reference).
 # Use get_chromium_version() for the current platform's actual version.
 # ---------------------------------------------------------------------------
-CHROMIUM_VERSION = "145.0.7632.109"
+CHROMIUM_VERSION = "145.0.7632.109.2"
 
 PLATFORM_CHROMIUM_VERSIONS: dict[str, str] = {
-    "linux-x64": "145.0.7632.109",
-    "darwin-arm64": "145.0.7632.109",
-    "darwin-x64": "145.0.7632.109",
-    "windows-x64": "145.0.7632.109",
+    "linux-x64": "145.0.7632.109.2",
+    "darwin-arm64": "145.0.7632.109.2",
+    "darwin-x64": "145.0.7632.109.2",
+    "windows-x64": "145.0.7632.109.2",
 }
 
 # ---------------------------------------------------------------------------
@@ -204,18 +204,27 @@ GITHUB_DOWNLOAD_BASE_URL = (
 )
 
 
+def get_archive_ext() -> str:
+    """Return the archive extension for the current platform (.zip for Windows, .tar.gz otherwise)."""
+    return ".zip" if platform.system() == "Windows" else ".tar.gz"
+
+
+def get_archive_name(tag: str | None = None) -> str:
+    """Return the archive filename for a platform tag (e.g. 'cloakbrowser-linux-x64.tar.gz')."""
+    t = tag or get_platform_tag()
+    return f"cloakbrowser-{t}{get_archive_ext()}"
+
+
 def get_download_url(version: str | None = None) -> str:
     """Return the full download URL for the current platform's binary archive."""
     v = version or get_chromium_version()
-    tag = get_platform_tag()
-    return f"{DOWNLOAD_BASE_URL}/chromium-v{v}/cloakbrowser-{tag}.tar.gz"
+    return f"{DOWNLOAD_BASE_URL}/chromium-v{v}/{get_archive_name()}"
 
 
 def get_fallback_download_url(version: str | None = None) -> str:
     """Return the GitHub Releases fallback URL for the binary archive."""
     v = version or get_chromium_version()
-    tag = get_platform_tag()
-    return f"{GITHUB_DOWNLOAD_BASE_URL}/chromium-v{v}/cloakbrowser-{tag}.tar.gz"
+    return f"{GITHUB_DOWNLOAD_BASE_URL}/chromium-v{v}/{get_archive_name()}"
 
 
 # ---------------------------------------------------------------------------
