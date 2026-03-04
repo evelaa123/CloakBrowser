@@ -26,13 +26,21 @@ You may NOT:
 4. **Modify** the Binary or create derivative works based on it
 5. **Remove or alter** any copyright notices, license files, or attribution included with the Binary
 
-Listing CloakBrowser as a dependency in your project (e.g., in `requirements.txt`, `package.json`, or documentation) is not redistribution — end users download the Binary directly from official CloakHQ channels.
+Normal use of the Binary with command-line flags, browser extensions, managed policies, custom profiles, or user data directories does not constitute modification or creation of derivative works.
 
-Internal caching or mirroring (including via artifact repositories such as Artifactory or Nexus) of unmodified Binaries that were originally obtained from official CloakHQ distribution channels is permitted solely for internal operational purposes within your organization. This permission does not allow public redistribution or distribution to third parties.
+## Cloud, Container & Integration Use
+
+**Internal use** — You may store and run the unmodified Binary within internal infrastructure, including Docker images, VM templates, CI runners, container registries, and artifact repositories (e.g., Artifactory, Nexus), solely for your organization's internal operational purposes.
+
+**Dependency listing** — Listing CloakBrowser as a dependency in your project or third-party framework (e.g., in `requirements.txt`, `package.json`, or documentation) is not redistribution, as end users download the Binary directly from official CloakHQ channels. No commercial license is required for this.
+
+**Using CloakBrowser for your own business is free** — no license beyond this one is needed, regardless of company size or revenue.
+
+**OEM/SaaS license required** — Bundling, embedding, or pre-installing the Binary into a product, hosted service, or cloud artifact distributed to third parties requires a separate OEM license. This includes running the Binary on your infrastructure to serve third-party customers (e.g., browser-as-a-service). Contact cloakhq@pm.me for OEM/SaaS licensing.
 
 ## Official Distribution
 
-The Binary must originally be obtained from official CloakHQ distribution channels, including GitHub Releases (github.com/CloakHQ/CloakBrowser) and cloakbrowser.dev. Internal organizational mirrors permitted under the Restrictions section are not considered unauthorized sources.
+The Binary must originally be obtained from official CloakHQ distribution channels, including GitHub Releases (github.com/CloakHQ/CloakBrowser) and cloakbrowser.dev. Internal organizational mirrors permitted under the Cloud, Container & Integration Use section are not considered unauthorized sources.
 
 ## Trademark Notice
 
@@ -46,6 +54,13 @@ Attribution is appreciated but not required. If you'd like to credit CloakBrowse
 
 You are solely responsible for how you use the Binary. You agree NOT to use the Binary for any activity that violates applicable laws or regulations in your jurisdiction. CloakHQ does not endorse, encourage, or support any illegal use.
 
+Without limiting the above, the following uses are expressly prohibited:
+
+- Unauthorized access to financial, banking, healthcare, or government authentication systems
+- Credential stuffing, brute-force login attempts, or automated account creation
+- Circumventing authentication on systems you do not own or have authorization to test
+- Any activity that constitutes fraud, identity theft, or unauthorized data collection
+
 ## Indemnification
 
 You agree to indemnify and hold harmless CloakHQ and its contributors from any claims, damages, losses, liabilities, and expenses (including reasonable legal fees) arising from your unlawful use of the Binary or your violation of this license.
@@ -53,6 +68,10 @@ You agree to indemnify and hold harmless CloakHQ and its contributors from any c
 ## Disclaimer
 
 THE BINARY IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE BINARY OR THE USE OR OTHER DEALINGS IN THE BINARY.
+
+## Limitation of Liability
+
+IN NO EVENT SHALL CLOAKHQ OR ITS CONTRIBUTORS BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING BUT NOT LIMITED TO LOSS OF PROFITS, DATA, BUSINESS OPPORTUNITIES, OR GOODWILL, ARISING OUT OF OR IN CONNECTION WITH THE USE OF THE BINARY, REGARDLESS OF THE THEORY OF LIABILITY. CLOAKHQ'S TOTAL AGGREGATE LIABILITY SHALL NOT EXCEED ONE HUNDRED US DOLLARS (US $100).
 
 ## Data Collection
 
