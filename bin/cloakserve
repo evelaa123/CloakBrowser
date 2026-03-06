@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""Launch stealth Chromium as a CDP server for remote connections.
+
+Usage:
+    cloakserve                          # headless on port 9222
+    cloakserve --headless=false         # headed (uses Xvfb in Docker)
+    cloakserve --proxy-server=host:port # with proxy
+
+Connect from host:
+    playwright.chromium.connect_over_cdp("http://localhost:9222")
+"""
+import os
+import signal
+import subprocess
+import sys
+import time
+
+from cloakbrowser.config import get_default_stealth_args
+from cloakbrowser.download import ensure_binary
+
+EXPOSE_PORT = 9222   # External, 0.0.0.0 (user connects here)
+CHROME_PORT = 9223   # Internal, 127.0.0.1 (Chrome binds here)
+
+binary = ensure_binary()
+
+chrome_args = [
+    binary,
+    f"--remote-debugging-port={CHROME_PORT}",
+    # "--remote-debugging-address=0.0.0.0",  # TODO: enable after binary patch 032
+    # Sane defaults for running Chrome directly (outside Playwright)
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-dev-shm-usage",
+    "--disable-extensions",
+    "--disable-popup-blocking",
+    "--disable-background-networking",
+    "--metrics-recording-only",
+] + get_default_stealth_args() + sys.argv[1:]
+
+# Launch Chrome
+chrome = subprocess.Popen(chrome_args)
+
+# Wait for Chrome to start listening
+time.sleep(2)
+
+# Forward 0.0.0.0:9222 -> 127.0.0.1:9223
+# Chrome hardcodes 127.0.0.1 for security; socat exposes it to Docker network.
+# TODO: Remove socat after patching binary to support --remote-debugging-address
+socat = subprocess.Popen([
+    "socat",
+    f"TCP-LISTEN:{EXPOSE_PORT},fork,reuseaddr,bind=0.0.0.0",
+    f"TCP:127.0.0.1:{CHROME_PORT}",
+])
+
+print(f"CloakBrowser CDP server ready on port {EXPOSE_PORT}", flush=True)
+
+
+def cleanup(sig, frame):
+    chrome.terminate()
+    socat.terminate()
+    sys.exit(0)
+
+
+signal.signal(signal.SIGTERM, cleanup)
+signal.signal(signal.SIGINT, cleanup)
+
+# Wait for Chrome to exit, then clean up socat
+chrome.wait()
+socat.terminate()

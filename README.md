@@ -9,7 +9,7 @@
 <a href="https://github.com/CloakHQ/CloakBrowser"><img src="https://img.shields.io/github/last-commit/cloakhq/cloakbrowser" alt="Last Commit"></a>
 <br>
 <a href="https://github.com/CloakHQ/CloakBrowser"><img src="https://img.shields.io/github/stars/cloakhq/cloakbrowser" alt="Stars"></a>
-<a href="https://pypi.org/project/cloakbrowser/"><img src="https://img.shields.io/pypi/dm/cloakbrowser?label=pypi%20downloads&logo=pypi&logoColor=white" alt="PyPI Downloads"></a>
+<a href="https://pypi.org/project/cloakbrowser/"><img src="https://img.shields.io/pepy/dt/cloakbrowser?label=pypi&logo=pypi&logoColor=white" alt="PyPI Downloads"></a>
 <a href="https://www.npmjs.com/package/cloakbrowser"><img src="https://img.shields.io/npm/dt/cloakbrowser?label=npm&logo=npm&logoColor=white" alt="npm Downloads"></a>
 </p>
 
@@ -506,13 +506,18 @@ The wrapper auto-downloads the correct binary for your platform.
 
 ## Docker
 
-Pre-built image on Docker Hub — no install, no setup:
+Pre-built image on Docker Hub — no install, no setup.
+
+### Quick test
 
 ```bash
-# Run the stealth test suite
 docker run --rm cloakhq/cloakbrowser cloaktest
+```
 
-# Run your own script
+### Run a script
+
+```bash
+# Inline script
 docker run --rm cloakhq/cloakbrowser python -c "
 from cloakbrowser import launch
 browser = launch()
@@ -521,6 +526,9 @@ page.goto('https://example.com')
 print(page.title())
 browser.close()
 "
+
+# Mount your own script
+docker run --rm -v ./my_script.py:/app/my_script.py cloakhq/cloakbrowser python my_script.py
 
 # With a proxy
 docker run --rm cloakhq/cloakbrowser python -c "
@@ -533,7 +541,50 @@ browser.close()
 "
 ```
 
-To extend with your own script:
+### CDP server mode
+
+Start a persistent stealth browser and connect to it remotely via Chrome DevTools Protocol:
+
+```bash
+docker run -d --name cloak -p 127.0.0.1:9222:9222 cloakhq/cloakbrowser cloakserve
+```
+
+Then connect from your host machine:
+
+```python
+from playwright.sync_api import sync_playwright
+
+pw = sync_playwright().start()
+browser = pw.chromium.connect_over_cdp("http://localhost:9222")
+page = browser.new_page()
+page.goto("https://example.com")
+print(page.title())
+browser.close()
+```
+
+Pass extra flags to the browser:
+
+```bash
+# With proxy
+docker run -d --name cloak -p 127.0.0.1:9222:9222 cloakhq/cloakbrowser \
+  cloakserve --proxy-server=http://proxy:8080
+
+# Headed mode (renders to Xvfb inside container)
+docker run -d --name cloak -p 127.0.0.1:9222:9222 cloakhq/cloakbrowser \
+  cloakserve --headless=false
+```
+
+Stop the server:
+
+```bash
+docker stop cloak && docker rm cloak
+```
+
+> **Security:** CDP gives full control over the browser (execute JS, read pages, access files).
+> The examples bind to `127.0.0.1` so only your machine can connect. Never expose port 9222
+> to the public internet without additional authentication.
+
+### Extend with your own image
 
 ```dockerfile
 FROM cloakhq/cloakbrowser

@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 libgtk-3-0 libpangocairo-1.0-0 libcairo-gobject2 \
     libgdk-pixbuf-2.0-0 libxss1 libxtst6 fonts-liberation \
     xvfb xdotool \
-    curl ca-certificates \
+    curl ca-certificates socat \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
@@ -36,7 +36,10 @@ RUN python -c "from cloakbrowser import ensure_binary; ensure_binary()" \
 
 # CLI shortcuts
 COPY bin/cloaktest /usr/local/bin/cloaktest
-RUN chmod +x /usr/local/bin/cloaktest
+COPY bin/cloakserve /usr/local/bin/cloakserve
+RUN chmod +x /usr/local/bin/cloaktest /usr/local/bin/cloakserve
+
+EXPOSE 9222
 
 # Xvfb entrypoint for headed mode support
 COPY bin/docker-entrypoint.sh /entrypoint.sh

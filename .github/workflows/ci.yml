@@ -28,5 +28,7 @@ jobs:
           node-version: 20
       - name: Install and build
         run: cd js && npm install && npm run build
+      - name: Typecheck
+        run: cd js && npm run typecheck
       - name: Run tests
         run: cd js && npm test
