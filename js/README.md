@@ -247,7 +247,7 @@ Other tips for maximizing reCAPTCHA scores:
 When auto-update downloads a newer binary, the previous version stays in `~/.cloakbrowser/`. Point `CLOAKBROWSER_BINARY_PATH` to the older cached binary:
 ```bash
 # Linux
-export CLOAKBROWSER_BINARY_PATH=~/.cloakbrowser/chromium-145.0.7632.159/chrome
+export CLOAKBROWSER_BINARY_PATH=~/.cloakbrowser/chromium-145.0.7632.159.2/chrome
 
 # macOS
 export CLOAKBROWSER_BINARY_PATH=~/.cloakbrowser/chromium-145.0.7632.109.2/Chromium.app/Contents/MacOS/Chromium

@@ -108,7 +108,7 @@ page.goto("https://example.com")
 
 > ⭐ **Star** to show support — **[Watch releases](https://github.com/CloakHQ/CloakBrowser/subscription)** to get notified when new builds drop.
 
-## Latest: v0.3.8 (Chromium 145.0.7632.159)
+## Latest: v0.3.10 (Chromium 145.0.7632.159.2)
 
 - **All 4 platforms** — Linux x64, macOS arm64, macOS x64, and Windows x64 all on Chromium 145
 - **26 fingerprint patches** — 10 new patches since v142 (screen, device memory, audio, WebGL, auto-spoof, and more)
@@ -307,7 +307,7 @@ from cloakbrowser import binary_info, clear_cache, ensure_binary
 
 # Check binary installation status
 print(binary_info())
-# {'version': '145.0.7632.159', 'platform': 'linux-x64', 'installed': True, ...}
+# {'version': '145.0.7632.159.2', 'platform': 'linux-x64', 'installed': True, ...}
 
 # Force re-download
 clear_cache()
@@ -717,7 +717,7 @@ export CLOAKBROWSER_BINARY_PATH=/path/to/your/chrome
 When auto-update downloads a newer binary, the previous version stays in `~/.cloakbrowser/`. Point `CLOAKBROWSER_BINARY_PATH` to the older cached binary:
 ```bash
 # Linux
-export CLOAKBROWSER_BINARY_PATH=~/.cloakbrowser/chromium-145.0.7632.159/chrome
+export CLOAKBROWSER_BINARY_PATH=~/.cloakbrowser/chromium-145.0.7632.159.2/chrome
 
 # macOS
 export CLOAKBROWSER_BINARY_PATH=~/.cloakbrowser/chromium-145.0.7632.109.2/Chromium.app/Contents/MacOS/Chromium

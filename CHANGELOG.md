@@ -6,6 +6,14 @@ Changes are tagged: **[wrapper]** for Python/JS wrapper, **[binary]** for Chromi
 
 ---
 
+## [0.3.10] — 2026-03-07
+
+- **[binary]** Upgrade Linux build to 145.0.7632.159.2
+- **[binary]** Fix detection regression caused by unnecessary browser flag (fixes #16)
+- **[binary]** Fix fingerprint consistency in offline audio rendering
+- **[wrapper]** Add `cloakserve` CDP server mode for Docker — exposes Chrome DevTools Protocol on `0.0.0.0:9222` for external tool integration
+- **[wrapper]** Add wrapper regression tests: page.goto timing with stealth init (#9), add_init_script compatibility with proxy auth (#27)
+
 ## [0.3.9] — 2026-03-05
 
 - **[binary]** Upgrade Chromium base to 145.0.7632.159 (Linux x64). macOS and Windows remain on 145.0.7632.109.2
