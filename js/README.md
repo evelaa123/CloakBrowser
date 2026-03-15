@@ -203,10 +203,11 @@ const page = await browser.newPage();
 
 | Platform | Chromium | Patches | Status |
 |---|---|---|---|
-| Linux x86_64 | 145 | 26 | ✅ Latest |
+| Linux x86_64 | 145 | 33 | ✅ Latest |
+| Linux arm64 (RPi, Graviton) | 145 | 33 | ✅ Latest |
 | macOS arm64 (Apple Silicon) | 145 | 26 | ✅ Latest |
 | macOS x86_64 (Intel) | 145 | 26 | ✅ Latest |
-| Windows x86_64 | 145 | 26 | ✅ Latest |
+| Windows x86_64 | 145 | 33 | ✅ Latest |
 
 ## Requirements
 
@@ -264,7 +265,7 @@ export CLOAKBROWSER_BINARY_PATH=~/.cloakbrowser/chromium-145.0.7632.159.2/chrome
 export CLOAKBROWSER_BINARY_PATH=~/.cloakbrowser/chromium-145.0.7632.109.2/Chromium.app/Contents/MacOS/Chromium
 
 # Windows
-set CLOAKBROWSER_BINARY_PATH=%USERPROFILE%\.cloakbrowser\chromium-145.0.7632.109.2\chrome.exe
+set CLOAKBROWSER_BINARY_PATH=%USERPROFILE%\.cloakbrowser\chromium-145.0.7632.159.7\chrome.exe
 ```
 
 ## Links

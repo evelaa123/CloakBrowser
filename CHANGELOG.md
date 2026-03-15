@@ -6,6 +6,12 @@ Changes are tagged: **[wrapper]** for Python/JS wrapper, **[binary]** for Chromi
 
 ---
 
+## [0.3.17] — 2026-03-15
+
+- **[binary]** Windows x64 build upgraded to 145.0.7632.159.7 — 33 source-level C++ patches, matching Linux
+- **[wrapper]** Auto-inject GPU blocklist bypass for headed mode and Windows — fixes WebGL/WebGPU on software GPUs in Docker/VNC (fixes #56)
+- **[wrapper]** Add 8 framework integration examples (Scrapy, Crawlee, BrowserBase, etc.) and README integrations section
+
 ## [0.3.16] — 2026-03-14
 
 - **[binary]** Linux arm64 build available — Raspberry Pi, AWS Graviton, Oracle Ampere now supported

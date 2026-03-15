@@ -128,7 +128,7 @@ Open [http://localhost:8080](http://localhost:8080). Create a profile. Click **L
 
 ---
 
-## Latest: v0.3.15 (Chromium 145.0.7632.159.7)
+## Latest: v0.3.17 (Chromium 145.0.7632.159.7)
 
 - **`humanize=True`** — one flag makes all mouse, keyboard, and scroll interactions behave like a real user. Bézier curves, per-character typing, realistic scroll patterns. Two presets: `default` and `careful`
 - **CDP input behavior mimicking** — input events sent via CDP now produce the same signals as real user interactions. 5 new source-level patches covering pointer, keyboard, and mouse behavior
@@ -642,11 +642,11 @@ browser = await launch_async(args=["--remote-debugging-port=9242"])
 
 | Platform | Chromium | Patches | Status |
 |---|---|---|---|
-| Linux x86_64 | 145 | 31 | ✅ Latest |
-| Linux arm64 (RPi, Graviton) | 145 | 31 | ✅ Latest |
+| Linux x86_64 | 145 | 33 | ✅ Latest |
+| Linux arm64 (RPi, Graviton) | 145 | 33 | ✅ Latest |
 | macOS arm64 (Apple Silicon) | 145 | 26 | ✅ Latest |
 | macOS x86_64 (Intel) | 145 | 26 | ✅ Latest |
-| Windows x86_64 | 145 | 26 | ✅ Latest |
+| Windows x86_64 | 145 | 33 | ✅ Latest |
 
 The wrapper auto-downloads the correct binary for your platform.
 
