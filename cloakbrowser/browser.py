@@ -101,7 +101,11 @@ def launch(
     sync_playwright = _import_sync_playwright(_resolve_backend(backend))
 
     binary_path = ensure_binary()
-    timezone, locale = maybe_resolve_geoip(geoip, proxy, timezone, locale)
+    timezone, locale, exit_ip = maybe_resolve_geoip(geoip, proxy, timezone, locale)
+    args = _resolve_webrtc_args(args, proxy)
+    if exit_ip and not (args and any(a.startswith("--fingerprint-webrtc-ip") for a in args)):
+        args = list(args or [])
+        args.append(f"--fingerprint-webrtc-ip={exit_ip}")
     chrome_args = build_args(stealth_args, args, timezone=timezone, locale=locale, headless=headless)
 
     logger.debug("Launching stealth Chromium (headless=%s, args=%d)", headless, len(chrome_args))
@@ -186,7 +190,11 @@ async def launch_async(  # noqa: C901
     async_playwright = _import_async_playwright(_resolve_backend(backend))
 
     binary_path = ensure_binary()
-    timezone, locale = maybe_resolve_geoip(geoip, proxy, timezone, locale)
+    timezone, locale, exit_ip = maybe_resolve_geoip(geoip, proxy, timezone, locale)
+    args = _resolve_webrtc_args(args, proxy)
+    if exit_ip and not (args and any(a.startswith("--fingerprint-webrtc-ip") for a in args)):
+        args = list(args or [])
+        args.append(f"--fingerprint-webrtc-ip={exit_ip}")
     chrome_args = build_args(stealth_args, args, timezone=timezone, locale=locale, headless=headless)
 
     logger.debug("Launching stealth Chromium async (headless=%s, args=%d)", headless, len(chrome_args))
@@ -284,7 +292,11 @@ def launch_persistent_context(
     timezone = _resolve_timezone(timezone, kwargs)
 
     binary_path = ensure_binary()
-    timezone, locale = maybe_resolve_geoip(geoip, proxy, timezone, locale)
+    timezone, locale, exit_ip = maybe_resolve_geoip(geoip, proxy, timezone, locale)
+    args = _resolve_webrtc_args(args, proxy)
+    if exit_ip and not (args and any(a.startswith("--fingerprint-webrtc-ip") for a in args)):
+        args = list(args or [])
+        args.append(f"--fingerprint-webrtc-ip={exit_ip}")
     chrome_args = build_args(stealth_args, args, timezone=timezone, locale=locale, headless=headless)
 
     logger.debug(
@@ -399,7 +411,11 @@ async def launch_persistent_context_async(
     timezone = _resolve_timezone(timezone, kwargs)
 
     binary_path = ensure_binary()
-    timezone, locale = maybe_resolve_geoip(geoip, proxy, timezone, locale)
+    timezone, locale, exit_ip = maybe_resolve_geoip(geoip, proxy, timezone, locale)
+    args = _resolve_webrtc_args(args, proxy)
+    if exit_ip and not (args and any(a.startswith("--fingerprint-webrtc-ip") for a in args)):
+        args = list(args or [])
+        args.append(f"--fingerprint-webrtc-ip={exit_ip}")
     chrome_args = build_args(stealth_args, args, timezone=timezone, locale=locale, headless=headless)
 
     logger.debug(
@@ -497,7 +513,11 @@ def launch_context(
 
     # Resolve geoip BEFORE launch() to avoid double-resolution and ensure
     # resolved values flow to binary flags
-    timezone, locale = maybe_resolve_geoip(geoip, proxy, timezone, locale)
+    timezone, locale, exit_ip = maybe_resolve_geoip(geoip, proxy, timezone, locale)
+    # Inject geoip exit IP for WebRTC spoofing (free — no extra HTTP call)
+    if exit_ip and not (args and any(a.startswith("--fingerprint-webrtc-ip") for a in args)):
+        args = list(args or [])
+        args.append(f"--fingerprint-webrtc-ip={exit_ip}")
     # --fingerprint-timezone is process-wide (reads CommandLine in renderer),
     # so it applies to ALL contexts, not just the default one.
     # locale and timezone are set via binary flags only — no CDP emulation.
@@ -590,28 +610,88 @@ def _ensure_proxy_scheme(proxy_url: str) -> str:
     return proxy_url if "://" in proxy_url else f"http://{proxy_url}"
 
 
+def _extract_proxy_url(proxy: str | ProxySettings | None) -> str | None:
+    """Extract and normalize proxy URL string from proxy param."""
+    if proxy is None:
+        return None
+    raw = proxy.get("server") if isinstance(proxy, dict) else proxy
+    if not raw:
+        return None
+    return _ensure_proxy_scheme(raw)
+
+
 def maybe_resolve_geoip(
     geoip: bool,
     proxy: str | ProxySettings | None,
     timezone: str | None,
     locale: str | None,
-) -> tuple[str | None, str | None]:
-    """Auto-fill timezone/locale from proxy IP when geoip is enabled."""
-    if not geoip or not proxy or (timezone is not None and locale is not None):
-        return timezone, locale
+) -> tuple[str | None, str | None, str | None]:
+    """Auto-fill timezone/locale from proxy IP when geoip is enabled.
 
-    from .geoip import resolve_proxy_geo
+    Returns ``(timezone, locale, exit_ip)``.  *exit_ip* is a free bonus
+    from the geoip lookup (no extra HTTP call) — used for WebRTC spoofing.
+    """
+    if not geoip or not proxy:
+        return timezone, locale, None
 
-    proxy_url = proxy.get("server") if isinstance(proxy, dict) else proxy
+    from .geoip import resolve_proxy_geo_with_ip
+
+    proxy_url = _extract_proxy_url(proxy)
     if not proxy_url:
-        return timezone, locale
-    proxy_url = _ensure_proxy_scheme(proxy_url)
-    geo_tz, geo_locale = resolve_proxy_geo(proxy_url)
+        return timezone, locale, None
+
+    # When both tz/locale are explicit, still resolve exit IP for WebRTC
+    if timezone is not None and locale is not None:
+        from .geoip import _resolve_exit_ip
+        exit_ip = _resolve_exit_ip(proxy_url)
+        return timezone, locale, exit_ip
+
+    geo_tz, geo_locale, exit_ip = resolve_proxy_geo_with_ip(proxy_url)
     if timezone is None:
         timezone = geo_tz
     if locale is None:
         locale = geo_locale
-    return timezone, locale
+    return timezone, locale, exit_ip
+
+
+def _resolve_webrtc_args(
+    args: list[str] | None,
+    proxy: str | ProxySettings | None,
+) -> list[str] | None:
+    """Replace --fingerprint-webrtc-ip=auto with the resolved proxy exit IP.
+
+    Returns args unchanged if no ``auto`` value is present.
+    """
+    if not args:
+        return args
+    idx = None
+    for i, a in enumerate(args):
+        if a == "--fingerprint-webrtc-ip=auto":
+            idx = i
+            break
+    if idx is None:
+        return args
+    proxy_url = _extract_proxy_url(proxy)
+    if not proxy_url:
+        logger.debug("--fingerprint-webrtc-ip=auto but no proxy set — removing flag")
+        args = list(args)
+        del args[idx]
+        return args
+    try:
+        from .geoip import _resolve_exit_ip
+        exit_ip = _resolve_exit_ip(proxy_url)
+    except Exception:
+        logger.debug("WebRTC IP resolution failed — removing flag")
+        args = list(args)
+        del args[idx]
+        return args
+    if exit_ip:
+        args = list(args)
+        args[idx] = f"--fingerprint-webrtc-ip={exit_ip}"
+    else:
+        args = list(args)
+        del args[idx]
+    return args
 
 
 def build_args(

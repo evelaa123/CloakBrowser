@@ -44,6 +44,7 @@ export const COUNTRY_LOCALE_MAP: Record<string, string> = {
 export interface GeoResult {
   timezone: string | null;
   locale: string | null;
+  exitIp: string | null;
 }
 
 /**
@@ -65,12 +66,12 @@ export async function resolveProxyGeo(
   }
 
   const dbPath = await ensureGeoipDb();
-  if (!dbPath) return { timezone: null, locale: null };
+  if (!dbPath) return { timezone: null, locale: null, exitIp: null };
 
   // Exit IP (through proxy) is most accurate — gateway DNS may differ from exit
   let ip = await resolveExitIp(proxyUrl);
   if (!ip) ip = await resolveProxyIp(proxyUrl);
-  if (!ip) return { timezone: null, locale: null };
+  if (!ip) return { timezone: null, locale: null, exitIp: null };
 
   try {
     const buf = fs.readFileSync(dbPath);
@@ -80,9 +81,9 @@ export async function resolveProxyGeo(
     const countryCode: string | null = result?.country?.iso_code ?? null;
     const locale =
       countryCode ? (COUNTRY_LOCALE_MAP[countryCode] ?? null) : null;
-    return { timezone, locale };
+    return { timezone, locale, exitIp: ip };
   } catch {
-    return { timezone: null, locale: null };
+    return { timezone: null, locale: null, exitIp: ip };
   }
 }
 
@@ -265,20 +266,64 @@ function maybeTriggerUpdate(dbPath: string): void {
 
 /**
  * Auto-fill timezone/locale from proxy IP when geoip is enabled.
- * Shared by the Playwright and Puppeteer wrappers.
+ * Also returns exitIp as a free bonus (reused for WebRTC spoofing).
  */
 export async function maybeResolveGeoip(
   options: LaunchOptions
-): Promise<{ timezone?: string; locale?: string }> {
+): Promise<{ timezone?: string; locale?: string; exitIp?: string }> {
   if (!options.geoip || !options.proxy) return { timezone: options.timezone, locale: options.locale };
-  if (options.timezone && options.locale) return { timezone: options.timezone, locale: options.locale };
 
   let proxyUrl = typeof options.proxy === "string" ? options.proxy : options.proxy.server;
   if (!proxyUrl) return { timezone: options.timezone, locale: options.locale };
   proxyUrl = ensureProxyScheme(proxyUrl);
-  const { timezone: geoTz, locale: geoLocale } = await resolveProxyGeo(proxyUrl);
+
+  // When both tz/locale are explicit, still resolve exit IP for WebRTC
+  if (options.timezone && options.locale) {
+    const exitIp = await resolveExitIp(proxyUrl) ?? undefined;
+    return { timezone: options.timezone, locale: options.locale, exitIp };
+  }
+
+  const { timezone: geoTz, locale: geoLocale, exitIp: geoExitIp } = await resolveProxyGeo(proxyUrl);
+  const exitIp = geoExitIp ?? undefined;
   return {
     timezone: options.timezone ?? geoTz ?? undefined,
     locale: options.locale ?? geoLocale ?? undefined,
+    exitIp,
   };
+}
+
+/**
+ * Replace --fingerprint-webrtc-ip=auto with the resolved proxy exit IP.
+ * Returns args unchanged if no ``auto`` value is present.
+ */
+export async function resolveWebrtcArgs(
+  options: LaunchOptions
+): Promise<string[] | undefined> {
+  const args = options.args;
+  if (!args) return args;
+  const idx = args.findIndex(a => a === "--fingerprint-webrtc-ip=auto");
+  if (idx === -1) return args;
+
+  let proxyUrl = typeof options.proxy === "string" ? options.proxy : options.proxy?.server;
+  if (!proxyUrl) {
+    const result = [...args];
+    result.splice(idx, 1);
+    return result;
+  }
+  proxyUrl = ensureProxyScheme(proxyUrl);
+
+  try {
+    const ip = await resolveExitIp(proxyUrl);
+    const result = [...args];
+    if (ip) {
+      result[idx] = `--fingerprint-webrtc-ip=${ip}`;
+    } else {
+      result.splice(idx, 1);
+    }
+    return result;
+  } catch {
+    const result = [...args];
+    result.splice(idx, 1);
+    return result;
+  }
 }

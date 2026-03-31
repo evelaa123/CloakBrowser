@@ -158,3 +158,44 @@ def test_override_logs_debug(caplog):
     with caplog.at_level(logging.DEBUG, logger="cloakbrowser"):
         build_args(stealth_args=True, extra_args=["--fingerprint=99887"])
     assert any("--fingerprint=" in r.message and "99887" in r.message for r in caplog.records)
+
+
+# --- WebRTC IP spoofing ---
+
+
+def test_webrtc_ip_passed_through_args():
+    """--fingerprint-webrtc-ip in args should pass through to output."""
+    args = build_args(stealth_args=True, extra_args=["--fingerprint-webrtc-ip=1.2.3.4"])
+    assert "--fingerprint-webrtc-ip=1.2.3.4" in args
+
+
+def test_webrtc_ip_not_present_by_default():
+    """No --fingerprint-webrtc-ip when not in args."""
+    args = build_args(stealth_args=True, extra_args=None)
+    assert not any(a.startswith("--fingerprint-webrtc-ip") for a in args)
+
+
+def test_resolve_webrtc_args_auto():
+    """--fingerprint-webrtc-ip=auto should be resolved to an IP."""
+    from cloakbrowser.browser import _resolve_webrtc_args
+    from unittest.mock import patch
+
+    with patch("cloakbrowser.geoip._resolve_exit_ip", return_value="5.6.7.8"):
+        result = _resolve_webrtc_args(["--fingerprint-webrtc-ip=auto"], "http://proxy:8080")
+    assert result == ["--fingerprint-webrtc-ip=5.6.7.8"]
+
+
+def test_resolve_webrtc_args_explicit_ip_unchanged():
+    """Explicit IP in args should not be touched."""
+    from cloakbrowser.browser import _resolve_webrtc_args
+
+    result = _resolve_webrtc_args(["--fingerprint-webrtc-ip=9.9.9.9"], "http://proxy:8080")
+    assert result == ["--fingerprint-webrtc-ip=9.9.9.9"]
+
+
+def test_resolve_webrtc_args_no_flag():
+    """No webrtc flag in args should return args unchanged."""
+    from cloakbrowser.browser import _resolve_webrtc_args
+
+    result = _resolve_webrtc_args(["--no-sandbox"], "http://proxy:8080")
+    assert result == ["--no-sandbox"]

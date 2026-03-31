@@ -182,6 +182,18 @@ describe("buildArgs deduplication", () => {
   });
 });
 
+describe("buildArgs webrtc IP", () => {
+  it("passes --fingerprint-webrtc-ip from args", () => {
+    const args = _buildArgsForTest({ args: ["--fingerprint-webrtc-ip=1.2.3.4"] });
+    expect(args).toContain("--fingerprint-webrtc-ip=1.2.3.4");
+  });
+
+  it("does not inject when not in args", () => {
+    const args = _buildArgsForTest({});
+    expect(args.some(a => a.startsWith("--fingerprint-webrtc-ip"))).toBe(false);
+  });
+});
+
 describe("resolveTimezone alias", () => {
   it("resolves timezoneId to timezone", () => {
     const result = resolveTimezone({ timezoneId: "Europe/Paris" });

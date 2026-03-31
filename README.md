@@ -137,6 +137,7 @@ Open [http://localhost:8080](http://localhost:8080). Create a profile. Click **L
 - **42 fingerprint patches** (Linux x64) — all 4 platforms on Chromium 145
 - **Stealthy with zero flags** — binary auto-generates a random fingerprint seed at startup. No configuration required
 - **Timezone & locale from proxy IP** — `launch(proxy="...", geoip=True)` auto-detects timezone and locale
+- **WebRTC IP spoofing** — `--fingerprint-webrtc-ip=auto` resolves your proxy's exit IP and spoofs WebRTC ICE candidates. Auto-injected when using `geoip=True` (no extra network call)
 - **Persistent profiles** — `launch_persistent_context()` keeps cookies and localStorage across sessions, bypasses incognito detection
 
 See the full [CHANGELOG.md](CHANGELOG.md) for details.
@@ -253,10 +254,18 @@ browser = launch(args=["--disable-gpu"])
 browser = launch(timezone="America/New_York", locale="en-US")
 
 # Auto-detect timezone/locale from proxy IP (requires: pip install cloakbrowser[geoip])
+# Also auto-injects --fingerprint-webrtc-ip to prevent WebRTC IP leaks (no extra cost)
+# Note: makes HTTP calls through your proxy to resolve exit IP (ipify.org, checkip.amazonaws.com)
 browser = launch(proxy="http://proxy:8080", geoip=True)
 
 # Explicit timezone/locale always win over auto-detection
 browser = launch(proxy="http://proxy:8080", geoip=True, timezone="Europe/London")
+
+# WebRTC IP spoofing only (no geoip dep needed — resolves exit IP via HTTP call through proxy)
+browser = launch(proxy="http://proxy:8080", args=["--fingerprint-webrtc-ip=auto"])
+
+# Explicit WebRTC IP (no network call)
+browser = launch(proxy="http://proxy:8080", args=["--fingerprint-webrtc-ip=1.2.3.4"])
 
 # Human-like mouse, keyboard, and scroll behavior
 browser = launch(humanize=True)
@@ -573,6 +582,7 @@ Supported by the binary but **not set by default** — pass via `args` to custom
 | `--fingerprint-storage-quota` | Override storage quota in MB — affects `storage.estimate()`, `storageBuckets`, and legacy webkit APIs. Auto-normalized when `--fingerprint` is set |
 | `--fingerprint-taskbar-height` | Override taskbar height (binary defaults: Win=48, Mac=95, Linux=0) |
 | `--fingerprint-fonts-dir` | Path to cross-platform font directory |
+| `--fingerprint-webrtc-ip` | WebRTC ICE candidate IP replacement. Use `auto` to resolve from proxy exit IP (makes an HTTP call through the proxy), or pass an explicit IP. Auto-injected when `geoip=True` |
 | `--fingerprint-noise=false` | Disable noise injection (canvas, WebGL, audio, client rects) while keeping the deterministic fingerprint seed active |
 | `--enable-blink-features=FakeShadowRoot` | Access closed shadow DOM elements |
 

@@ -53,6 +53,18 @@ def resolve_proxy_geo(proxy_url: str) -> tuple[str | None, str | None]:
     Returns ``(timezone, locale)`` — either or both may be ``None`` on
     failure (missing dep, DB download error, lookup miss).  Never raises.
     """
+    tz, locale, _ip = resolve_proxy_geo_with_ip(proxy_url)
+    return tz, locale
+
+
+def resolve_proxy_geo_with_ip(
+    proxy_url: str,
+) -> tuple[str | None, str | None, str | None]:
+    """Resolve timezone, locale, and exit IP from a proxy.
+
+    Returns ``(timezone, locale, exit_ip)``.  The exit IP is a free bonus
+    from the lookup — reused for WebRTC spoofing without an extra HTTP call.
+    """
     try:
         import geoip2.database  # noqa: F811
     except ImportError:
@@ -63,14 +75,14 @@ def resolve_proxy_geo(proxy_url: str) -> tuple[str | None, str | None]:
 
     db_path = _ensure_geoip_db()
     if db_path is None:
-        return None, None
+        return None, None, None
 
     # Exit IP (through proxy) is most accurate — gateway DNS may differ from exit
     ip = _resolve_exit_ip(proxy_url)
     if ip is None:
         ip = _resolve_proxy_ip(proxy_url)
     if ip is None:
-        return None, None
+        return None, None, None
 
     try:
         with geoip2.database.Reader(str(db_path)) as reader:
@@ -82,10 +94,10 @@ def resolve_proxy_geo(proxy_url: str) -> tuple[str | None, str | None]:
                 "GeoIP: %s → tz=%s, country=%s, locale=%s",
                 ip, timezone, country, locale,
             )
-            return timezone, locale
+            return timezone, locale, ip
     except Exception as exc:
         logger.debug("GeoIP lookup failed for %s: %s", ip, exc)
-        return None, None
+        return None, None, ip
 
 
 # ---------------------------------------------------------------------------

@@ -9,7 +9,7 @@ import { IGNORE_DEFAULT_ARGS } from "./config.js";
 import { buildArgs } from "./args.js";
 import { ensureBinary } from "./download.js";
 import { parseProxyUrl } from "./proxy.js";
-import { maybeResolveGeoip } from "./geoip.js";
+import { maybeResolveGeoip, resolveWebrtcArgs } from "./geoip.js";
 
 /**
  * Launch stealth Chromium browser via Puppeteer.
@@ -28,8 +28,12 @@ export async function launch(options: LaunchOptions = {}): Promise<Browser> {
   const puppeteer = await import("puppeteer-core");
 
   const binaryPath = process.env.CLOAKBROWSER_BINARY_PATH || (await ensureBinary());
-  const resolved = await maybeResolveGeoip(options);
-  const args = buildArgs({ ...options, ...resolved });
+  const { exitIp, ...resolved } = (await maybeResolveGeoip(options)) ?? {};
+  let resolvedArgs = (await resolveWebrtcArgs(options)) ?? options.args;
+  if (exitIp && !(resolvedArgs ?? []).some(a => a.startsWith("--fingerprint-webrtc-ip"))) {
+    resolvedArgs = [...(resolvedArgs ?? []), `--fingerprint-webrtc-ip=${exitIp}`];
+  }
+  const args = buildArgs({ ...options, ...resolved, args: resolvedArgs });
 
   // Puppeteer handles proxy via CLI args, not a separate option.
   // Chromium's --proxy-server does NOT support inline credentials,

@@ -9,7 +9,7 @@ import { DEFAULT_VIEWPORT, IGNORE_DEFAULT_ARGS } from "./config.js";
 import { buildArgs } from "./args.js";
 import { ensureBinary } from "./download.js";
 import { parseProxyUrl } from "./proxy.js";
-import { maybeResolveGeoip } from "./geoip.js";
+import { maybeResolveGeoip, resolveWebrtcArgs } from "./geoip.js";
 
 /** @internal Accept both timezone and timezoneId — either works, no warning. Exported for testing. */
 export function resolveTimezone<T extends { timezone?: string; timezoneId?: string }>(options: T): T {
@@ -38,8 +38,12 @@ export async function launch(options: LaunchOptions = {}): Promise<Browser> {
   const { chromium } = await import("playwright-core");
 
   const binaryPath = process.env.CLOAKBROWSER_BINARY_PATH || (await ensureBinary());
-  const resolved = await maybeResolveGeoip(options);
-  const args = buildArgs({ ...options, ...resolved });
+  const { exitIp, ...resolved } = await maybeResolveGeoip(options);
+  let resolvedArgs = await resolveWebrtcArgs(options);
+  if (exitIp && !(resolvedArgs ?? []).some(a => a.startsWith("--fingerprint-webrtc-ip"))) {
+    resolvedArgs = [...(resolvedArgs ?? []), `--fingerprint-webrtc-ip=${exitIp}`];
+  }
+  const args = buildArgs({ ...options, ...resolved, args: resolvedArgs });
 
   const browser = await chromium.launch({
     executablePath: binaryPath,
@@ -87,11 +91,16 @@ export async function launchContext(
 ): Promise<BrowserContext> {
   options = resolveTimezone(options);
   // Resolve geoip BEFORE launch() to avoid double-resolution
-  const resolved = await maybeResolveGeoip(options);
+  const { exitIp, ...resolved } = await maybeResolveGeoip(options);
+  let launchArgs = await resolveWebrtcArgs(options);
+  // Inject geoip exit IP for WebRTC spoofing (free — no extra HTTP call)
+  if (exitIp && !(launchArgs ?? []).some(a => a.startsWith("--fingerprint-webrtc-ip"))) {
+    launchArgs = [...(launchArgs ?? []), `--fingerprint-webrtc-ip=${exitIp}`];
+  }
   // --fingerprint-timezone is process-wide (reads CommandLine in renderer),
   // so it applies to ALL contexts, not just the default one.
   // locale and timezone are set via binary flags only — no CDP emulation.
-  const browser = await launch({ ...options, ...resolved, geoip: false });
+  const browser = await launch({ ...options, ...resolved, args: launchArgs, geoip: false });
 
   let context: BrowserContext;
   try {
@@ -154,8 +163,12 @@ export async function launchPersistentContext(
   const { chromium } = await import("playwright-core");
 
   const binaryPath = process.env.CLOAKBROWSER_BINARY_PATH || (await ensureBinary());
-  const resolved = await maybeResolveGeoip(options);
-  const args = buildArgs({ ...options, ...resolved });
+  const { exitIp, ...resolved } = await maybeResolveGeoip(options);
+  let resolvedArgs = await resolveWebrtcArgs(options);
+  if (exitIp && !(resolvedArgs ?? []).some(a => a.startsWith("--fingerprint-webrtc-ip"))) {
+    resolvedArgs = [...(resolvedArgs ?? []), `--fingerprint-webrtc-ip=${exitIp}`];
+  }
+  const args = buildArgs({ ...options, ...resolved, args: resolvedArgs });
 
   // locale and timezone are set via binary flags (--lang, --fingerprint-timezone)
   // — NOT via Playwright context kwargs which use detectable CDP emulation.

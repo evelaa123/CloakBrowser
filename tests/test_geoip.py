@@ -97,46 +97,51 @@ def test_resolve_geo_returns_none_when_db_missing():
 
 
 def test_maybe_resolve_skips_when_geoip_false():
-    tz, loc = maybe_resolve_geoip(False, "http://proxy:8080", None, None)
+    tz, loc, ip = maybe_resolve_geoip(False, "http://proxy:8080", None, None)
     assert tz is None
     assert loc is None
+    assert ip is None
 
 
 def test_maybe_resolve_skips_when_no_proxy():
-    tz, loc = maybe_resolve_geoip(True, None, None, None)
+    tz, loc, ip = maybe_resolve_geoip(True, None, None, None)
     assert tz is None
     assert loc is None
+    assert ip is None
 
 
 def test_maybe_resolve_skips_when_both_explicit():
-    """Explicit values should not trigger geoip resolution."""
-    tz, loc = maybe_resolve_geoip(True, "http://proxy:8080", "Europe/Berlin", "de-DE")
+    """Explicit values should still resolve exit IP for WebRTC."""
+    with patch("cloakbrowser.geoip._resolve_exit_ip", return_value="1.2.3.4"):
+        tz, loc, ip = maybe_resolve_geoip(True, "http://proxy:8080", "Europe/Berlin", "de-DE")
     assert tz == "Europe/Berlin"
     assert loc == "de-DE"
+    assert ip == "1.2.3.4"
 
 
 def test_maybe_resolve_fills_missing_timezone():
     """When only locale is explicit, geoip should fill timezone."""
-    with patch("cloakbrowser.geoip.resolve_proxy_geo", return_value=("America/New_York", "en-US")):
-        tz, loc = maybe_resolve_geoip(True, "http://proxy:8080", None, "fr-FR")
+    with patch("cloakbrowser.geoip.resolve_proxy_geo_with_ip", return_value=("America/New_York", "en-US", "1.2.3.4")):
+        tz, loc, ip = maybe_resolve_geoip(True, "http://proxy:8080", None, "fr-FR")
         assert tz == "America/New_York"
         assert loc == "fr-FR"  # Explicit wins
 
 
 def test_maybe_resolve_fills_missing_locale():
     """When only timezone is explicit, geoip should fill locale."""
-    with patch("cloakbrowser.geoip.resolve_proxy_geo", return_value=("America/New_York", "en-US")):
-        tz, loc = maybe_resolve_geoip(True, "http://proxy:8080", "Asia/Tokyo", None)
+    with patch("cloakbrowser.geoip.resolve_proxy_geo_with_ip", return_value=("America/New_York", "en-US", "1.2.3.4")):
+        tz, loc, ip = maybe_resolve_geoip(True, "http://proxy:8080", "Asia/Tokyo", None)
         assert tz == "Asia/Tokyo"  # Explicit wins
         assert loc == "en-US"
 
 
 def test_maybe_resolve_fills_both():
     """When neither is set, geoip should fill both."""
-    with patch("cloakbrowser.geoip.resolve_proxy_geo", return_value=("Europe/Berlin", "de-DE")):
-        tz, loc = maybe_resolve_geoip(True, "http://proxy:8080", None, None)
+    with patch("cloakbrowser.geoip.resolve_proxy_geo_with_ip", return_value=("Europe/Berlin", "de-DE", "5.6.7.8")):
+        tz, loc, ip = maybe_resolve_geoip(True, "http://proxy:8080", None, None)
         assert tz == "Europe/Berlin"
         assert loc == "de-DE"
+        assert ip == "5.6.7.8"
 
 
 # ---------------------------------------------------------------------------

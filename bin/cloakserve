@@ -36,7 +36,7 @@ import aiohttp
 import websockets
 from aiohttp import web
 
-from cloakbrowser.browser import build_args, maybe_resolve_geoip
+from cloakbrowser.browser import build_args, maybe_resolve_geoip, _resolve_webrtc_args
 from cloakbrowser.download import ensure_binary
 
 logging.basicConfig(
@@ -166,8 +166,9 @@ class ChromePool:
                 await self._cleanup_process(seed_key)
 
             # Resolve geoip if requested
+            exit_ip = None
             if geoip and proxy:
-                timezone, locale = maybe_resolve_geoip(True, proxy, timezone, locale)
+                timezone, locale, exit_ip = maybe_resolve_geoip(True, proxy, timezone, locale)
 
             # Build Chrome args via shared logic
             fp_extra = [f"--fingerprint={actual_seed}"]
@@ -175,6 +176,12 @@ class ChromePool:
                 fp_extra.extend(extra_args)
             if proxy:
                 fp_extra.append(f"--proxy-server={proxy}")
+
+            # WebRTC IP spoofing: resolve auto, inject geoip exit IP
+            fp_extra = _resolve_webrtc_args(fp_extra, proxy)
+            if exit_ip and not any(a.startswith("--fingerprint-webrtc-ip") for a in (fp_extra or [])):
+                fp_extra = list(fp_extra or [])
+                fp_extra.append(f"--fingerprint-webrtc-ip={exit_ip}")
 
             chrome_args = build_args(
                 stealth_args=True,
