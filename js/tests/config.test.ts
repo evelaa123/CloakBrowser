@@ -21,15 +21,16 @@ describe("config", () => {
     const isMac = process.platform === "darwin";
 
     expect(args).toContain("--no-sandbox");
-    expect(args).toContain("--disable-blink-features=AutomationControlled");
 
     if (isMac) {
       expect(args).toContain("--fingerprint-platform=macos");
-      // macOS: no hardware-concurrency or GPU spoofing (uses native values)
-      expect(args.some((a) => a.includes("hardware-concurrency"))).toBe(false);
     } else {
       expect(args).toContain("--fingerprint-platform=windows");
     }
+
+    // GPU flags removed — binary auto-generates from seed + platform
+    expect(args.some((a) => a.includes("fingerprint-gpu-vendor"))).toBe(false);
+    expect(args.some((a) => a.includes("fingerprint-gpu-renderer"))).toBe(false);
 
     // Should have a random fingerprint seed
     const fingerprintArg = args.find((a) => a.startsWith("--fingerprint="));

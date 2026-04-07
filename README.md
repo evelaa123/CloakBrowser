@@ -554,14 +554,10 @@ Every `launch()` call sets these automatically. The **wrapper** applies platform
 |------|--------------|---------------|----------|
 | `--fingerprint` | Random (10000–99999) | Random (10000–99999) | Master seed for canvas, WebGL, audio, fonts, client rects |
 | `--fingerprint-platform` | `windows` | `macos` | `navigator.platform`, User-Agent OS, GPU pool selection |
-| `--fingerprint-gpu-vendor` | `NVIDIA Corporation` | `Google Inc. (Apple)` | WebGL `UNMASKED_VENDOR_WEBGL` |
-| `--fingerprint-gpu-renderer` | `NVIDIA GeForce RTX 3070` | `ANGLE (Apple, ANGLE Metal Renderer: Apple M3, Unspecified Version)` | WebGL `UNMASKED_RENDERER_WEBGL` |
 
-The binary auto-generates hardware concurrency (8), device memory (8), and screen dimensions (1920x1080 on Windows/Linux, 1440x900 on macOS) from the seed. Override with explicit flags if needed.
+The binary auto-generates everything else from the seed: GPU, hardware concurrency, device memory, and screen dimensions. Each seed produces a unique, consistent fingerprint. Override with explicit flags if needed.
 
-> **Using the binary directly?** It works out of the box with zero flags — the binary auto-spoofs everything. Pass `--fingerprint=seed` for a persistent identity, or use explicit flags like `--fingerprint-gpu-renderer` to override any auto-generated value.
-
-> **Production tip:** For better stealth at scale, pass your own GPU, screen, and hardware values instead of relying on defaults. Custom parameters make your sessions harder to cluster by anti-bot systems that look for uniform fingerprint profiles.
+> **Using the binary directly?** It works out of the box with zero flags -- the binary auto-spoofs everything. Pass `--fingerprint=seed` for a persistent identity, or use explicit flags like `--fingerprint-gpu-renderer` to override any auto-generated value.
 
 ### Additional Flags
 
@@ -569,6 +565,8 @@ Supported by the binary but **not set by default** — pass via `args` to custom
 
 | Flag | Controls |
 |------|----------|
+| `--fingerprint-gpu-vendor` | WebGL `UNMASKED_VENDOR_WEBGL` (auto-generated from seed + platform) |
+| `--fingerprint-gpu-renderer` | WebGL `UNMASKED_RENDERER_WEBGL` (auto-generated from seed + platform) |
 | `--fingerprint-hardware-concurrency` | `navigator.hardwareConcurrency` (auto-generated: `8`) |
 | `--fingerprint-device-memory` | `navigator.deviceMemory` in GB (auto-generated: `8`) |
 | `--fingerprint-screen-width` | Screen width (auto-generated: `1920` Win/Linux, `1440` macOS) |
@@ -598,11 +596,9 @@ browser = launch(args=["--fingerprint=42069"])
 browser = launch(stealth_args=False, args=[
     "--fingerprint=42069",
     "--fingerprint-platform=windows",
-    "--fingerprint-gpu-vendor=NVIDIA Corporation",
-    "--fingerprint-gpu-renderer=NVIDIA GeForce RTX 3070",
 ])
 
-# Override GPU to look like a different machine
+# Override GPU to look like a specific machine
 browser = launch(args=[
     "--fingerprint-gpu-vendor=Intel Inc.",
     "--fingerprint-gpu-renderer=Intel Iris OpenGL Engine",
@@ -656,11 +652,11 @@ browser = await launch_async(args=["--remote-debugging-port=9242"])
 
 | Platform | Chromium | Patches | Status |
 |---|---|---|---|
-| Linux x86_64 | 145 | 42 | ✅ Latest |
-| Linux arm64 (RPi, Graviton) | 145 | 33 | ✅ |
+| Linux x86_64 | 145 | 48 | ✅ Latest |
+| Linux arm64 (RPi, Graviton) | 145 | 48 | ✅ |
 | macOS arm64 (Apple Silicon) | 145 | 26 | ✅ |
 | macOS x86_64 (Intel) | 145 | 26 | ✅ |
-| Windows x86_64 | 145 | 33 | ✅ |
+| Windows x86_64 | 145 | 48 | ✅ |
 
 The wrapper auto-downloads the correct binary for your platform.
 

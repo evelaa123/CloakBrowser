@@ -6,6 +6,15 @@ Changes are tagged: **[wrapper]** for Python/JS wrapper, **[binary]** for Chromi
 
 ---
 
+## [0.3.21] — 2026-04-07
+
+- **[wrapper]** Remove dead `--disable-blink-features=AutomationControlled` flag -- binary patch 009 already handles `navigator.webdriver` at source level
+- **[wrapper]** Remove hardcoded GPU vendor/renderer flags -- binary auto-generates diverse, realistic GPU profiles from the fingerprint seed. Each seed gets a unique GPU instead of every user sharing the same one
+- **[wrapper]** Allow `viewport=None` to disable viewport emulation in both Python and JS wrappers (thanks [@kitiho](https://github.com/kitiho), #107)
+- **[wrapper]** Enable `geoip=True` in stealth test example to fix FingerprintJS detection
+- **[meta]** Remove npm self-upgrade step in CI -- Node 22 ships with compatible npm
+- **[docker]** Install `geoip2` in Docker image for GeoIP auto-detection support
+
 ## [0.3.20] — 2026-04-06
 
 - **[binary]** Upgrade Linux x64 build to 145.0.7632.159.9 — 48 source-level C++ patches (up from 42)

@@ -203,11 +203,11 @@ const page = await browser.newPage();
 
 | Platform | Chromium | Patches | Status |
 |---|---|---|---|
-| Linux x86_64 | 145 | 33 | ✅ Latest |
-| Linux arm64 (RPi, Graviton) | 145 | 33 | ✅ Latest |
+| Linux x86_64 | 145 | 48 | ✅ Latest |
+| Linux arm64 (RPi, Graviton) | 145 | 48 | ✅ Latest |
 | macOS arm64 (Apple Silicon) | 145 | 26 | ✅ Latest |
 | macOS x86_64 (Intel) | 145 | 26 | ✅ Latest |
-| Windows x86_64 | 145 | 33 | ✅ Latest |
+| Windows x86_64 | 145 | 48 | ✅ Latest |
 
 ## Requirements
 

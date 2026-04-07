@@ -133,10 +133,14 @@ class TestStealthArgs:
         with patch("cloakbrowser.config.platform.system", return_value="Darwin"):
             args = get_default_stealth_args()
             assert "--fingerprint-platform=macos" in args
-            assert any("Apple" in a for a in args)
+            # GPU flags removed — binary auto-generates from seed + platform
+            assert not any("fingerprint-gpu-vendor" in a for a in args)
+            assert not any("fingerprint-gpu-renderer" in a for a in args)
 
     def test_linux_windows_profile(self):
         with patch("cloakbrowser.config.platform.system", return_value="Linux"):
             args = get_default_stealth_args()
             assert "--fingerprint-platform=windows" in args
-            assert any("NVIDIA" in a for a in args)
+            # GPU flags removed — binary auto-generates from seed + platform
+            assert not any("fingerprint-gpu-vendor" in a for a in args)
+            assert not any("fingerprint-gpu-renderer" in a for a in args)
