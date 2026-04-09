@@ -13,6 +13,10 @@
     "./puppeteer": {
       "types": "./dist/puppeteer.d.ts",
       "import": "./dist/puppeteer.js"
+    },
+    "./human": {
+      "types": "./dist/human/index.d.ts",
+      "import": "./dist/human/index.js"
     }
   },
   "bin": {

@@ -452,6 +452,89 @@ describe("module exports", () => {
 });
 
 // =========================================================================
+// patchBrowser on CDP-connected browser (issue #126)
+// =========================================================================
+describe("patchBrowser CDP-connected workflow", () => {
+  it("patches existing pages on a browser with pre-existing contexts", async () => {
+    const { patchBrowser, resolveConfig } = await import("../src/human/index.js");
+
+    // Simulate a CDP-connected browser: it already has contexts and pages
+    const page = buildMockPage();
+    const context: any = {
+      pages: vi.fn(() => [page]),
+      on: vi.fn(),
+      newPage: vi.fn(async () => buildMockPage()),
+      addInitScript: vi.fn(async () => {}),
+    };
+    const browser: any = {
+      contexts: vi.fn(() => [context]),
+      newContext: vi.fn(async () => context),
+      newPage: vi.fn(async () => page),
+    };
+
+    const cfg = resolveConfig("default");
+    patchBrowser(browser, cfg);
+
+    // page should now have _original (proof it was patched)
+    expect((page as any)._original).toBeDefined();
+    expect((page as any)._original.click).toBeTypeOf("function");
+    expect((page as any)._original.fill).toBeTypeOf("function");
+    expect((page as any)._humanCfg).toBe(cfg);
+  });
+
+  it("patched click calls mouse.down (humanized path, not original)", async () => {
+    const { patchBrowser, resolveConfig } = await import("../src/human/index.js");
+
+    let downCalled = false;
+    const page = buildMockPage();
+    page.mouse.down = vi.fn(async () => { downCalled = true; });
+
+    const context: any = {
+      pages: vi.fn(() => [page]),
+      on: vi.fn(),
+      newPage: vi.fn(async () => buildMockPage()),
+      addInitScript: vi.fn(async () => {}),
+    };
+    const browser: any = {
+      contexts: vi.fn(() => [context]),
+      newContext: vi.fn(async () => context),
+      newPage: vi.fn(async () => page),
+    };
+
+    patchBrowser(browser, resolveConfig("default"));
+
+    // Click through the patched method — should go through humanize path
+    try { await (page as any).click("button"); } catch (_) {}
+
+    expect(downCalled).toBe(true);
+  }, 30000);
+
+  it("new contexts created after patchBrowser are also patched", async () => {
+    const { patchBrowser, resolveConfig } = await import("../src/human/index.js");
+
+    const newPage = buildMockPage();
+    const newContext: any = {
+      pages: vi.fn(() => [newPage]),
+      on: vi.fn(),
+      newPage: vi.fn(async () => buildMockPage()),
+      addInitScript: vi.fn(async () => {}),
+    };
+    const browser: any = {
+      contexts: vi.fn(() => []),
+      newContext: vi.fn(async () => newContext),
+      newPage: vi.fn(async () => newPage),
+    };
+
+    patchBrowser(browser, resolveConfig("default"));
+
+    // Create a new context via the patched newContext
+    const ctx = await browser.newContext();
+    // Pages in the new context should be patched
+    expect((newPage as any)._original).toBeDefined();
+  });
+});
+
+// =========================================================================
 // Test helpers
 // =========================================================================
 
