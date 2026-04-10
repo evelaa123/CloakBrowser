@@ -22,6 +22,7 @@ describe("puppeteer launch", () => {
   let mockBrowser: any;
 
   beforeEach(async () => {
+    delete process.env.CLOAKBROWSER_BINARY_PATH;
     puppeteerMock = await import("puppeteer-core");
     mockBrowser = {
       newPage: vi.fn().mockResolvedValue({

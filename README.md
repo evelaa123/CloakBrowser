@@ -40,7 +40,7 @@ Drop-in Playwright/Puppeteer replacement for Python and JavaScript.<br>
 Same API, same code — just swap the import. <strong>3 lines of code, 30 seconds to unblock.</strong>
 </p>
 
-- **48 source-level C++ patches** — canvas, WebGL, audio, fonts, GPU, screen, WebRTC, network timing, automation signals, CDP input behavior
+- **49 source-level C++ patches** — canvas, WebGL, audio, fonts, GPU, screen, WebRTC, network timing, automation signals, CDP input behavior
 - **`humanize=True`** — human-like mouse curves, keyboard timing, and scroll patterns. One flag, behavioral detection passes
 - **0.9 reCAPTCHA v3 score** — human-level, server-verified
 - **Passes Cloudflare Turnstile**, FingerprintJS, BrowserScan — tested against 30+ detection sites
@@ -128,9 +128,10 @@ Open [http://localhost:8080](http://localhost:8080). Create a profile. Click **L
 
 ---
 
-## Latest: v0.3.20 (Chromium 145.0.7632.159.9)
+## Latest: v0.3.22 (Chromium 146.0.7680.177.1)
 
-- **48 fingerprint patches** (Linux x64) — 6 new patches covering WebRTC IP spoofing, proxy signal removal, and network timing normalization
+- **Chromium 146 upgrade** — rebased all patches from 145.0.7632.x to 146.0.7680.177
+- **49 fingerprint patches** (Linux x64) — 1 new patch, all existing patches carried forward
 - **WebRTC IP spoofing** — `--fingerprint-webrtc-ip=auto` resolves your proxy's exit IP and spoofs WebRTC ICE candidates. Auto-injected when using `geoip=True` (no extra network call)
 - **Proxy signal removal** — DNS/connect/SSL timing zeroed, proxy cache headers stripped, Proxy-Connection header leak removed
 - **`cloakserve` CDP multiplexer** — rewritten as a multi-connection CDP proxy with per-connection fingerprint seeds
@@ -154,7 +155,7 @@ CloakBrowser doesn't solve CAPTCHAs — it prevents them from appearing. No CAPT
 
 ## Test Results
 
-All tests verified against live detection services. Last tested: Mar 2026 (Chromium 145).
+All tests verified against live detection services. Last tested: Apr 2026 (Chromium 146).
 
 | Detection Service | Stock Playwright | CloakBrowser | Notes |
 |---|---|---|---|
@@ -169,7 +170,7 @@ All tests verified against live detection services. Last tested: Mar 2026 (Chrom
 | `navigator.webdriver` | `true` | **`false`** | Source-level patch |
 | `navigator.plugins.length` | 0 | **5** | Real plugin list |
 | `window.chrome` | `undefined` | **`object`** | Present like real Chrome |
-| UA string | `HeadlessChrome` | **`Chrome/145.0.0.0`** | No headless leak |
+| UA string | `HeadlessChrome` | **`Chrome/146.0.0.0`** | No headless leak |
 | CDP detection | Detected | **Not detected** | `isAutomatedWithCDP: false` |
 | TLS fingerprint | Mismatch | **Identical to Chrome** | ja3n/ja4/akamai match |
 | | | **Tested against 30+ detection sites** | |
@@ -218,11 +219,11 @@ All tests verified against live detection services. Last tested: Mar 2026 (Chrom
 CloakBrowser is a thin wrapper (Python + JavaScript) around a custom-built Chromium binary:
 
 1. **You install** → `pip install cloakbrowser` or `npm install cloakbrowser`
-2. **First launch** → binary auto-downloads for your platform (Chromium 145)
+2. **First launch** → binary auto-downloads for your platform (Chromium 146)
 3. **Every launch** → Playwright or Puppeteer starts with our binary + stealth args
 4. **You write code** → standard Playwright/Puppeteer API, nothing new to learn
 
-The binary includes 48 source-level patches covering canvas, WebGL, audio, fonts, GPU, screen properties, WebRTC, network timing, hardware reporting, automation signal removal, and CDP input behavior mimicking.
+The binary includes 49 source-level patches covering canvas, WebGL, audio, fonts, GPU, screen properties, WebRTC, network timing, hardware reporting, automation signal removal, and CDP input behavior mimicking.
 
 These are compiled into the Chromium binary — not injected via JavaScript, not set via flags.
 
@@ -369,7 +370,7 @@ from cloakbrowser import binary_info, clear_cache, ensure_binary
 
 # Check binary installation status
 print(binary_info())
-# {'version': '145.0.7632.159.2', 'platform': 'linux-x64', 'installed': True, ...}
+# {'version': '146.0.7680.177.1', 'platform': 'linux-x64', 'installed': True, ...}
 
 # Force re-download
 clear_cache()
@@ -451,7 +452,7 @@ clearCache();
 
 ## Human Behavior
 
-Pass `humanize=True` to make all mouse, keyboard, and scroll interactions indistinguishable from real users. All Playwright calls — `page.click()`, `page.fill()`, `page.type()`, `page.mouse.*`, `page.keyboard.*`, and the full Locator API — are automatically replaced with human-like equivalents. No code changes needed.
+Pass `humanize=True` to make all mouse, keyboard, and scroll interactions indistinguishable from real users. All Playwright calls (`page.click()`, `page.fill()`, `page.type()`, `page.mouse.*`, `page.keyboard.*`, Locator API) and Puppeteer calls (`page.click()`, `page.type()`, `page.mouse.*`, `page.keyboard.*`, ElementHandle API) are automatically replaced with human-like equivalents. No code changes needed.
 
 ```python
 browser = launch(humanize=True)
@@ -462,6 +463,14 @@ page.locator("button[type=submit]").click()       # Bézier curve, realistic aim
 ```
 
 ```javascript
+// Playwright
+import { launch } from 'cloakbrowser';
+const browser = await launch({ humanize: true });
+```
+
+```javascript
+// Puppeteer
+import { launch } from 'cloakbrowser/puppeteer';
 const browser = await launch({ humanize: true });
 ```
 
@@ -510,9 +519,11 @@ const browser = await launch({
 
 Access the original un-patched Playwright page at `page._original` if you need raw speed for a specific call.
 
-> **Note:** Always use `page.click(selector)`, `page.type(selector, text)`, `page.hover(selector)`, or `page.locator(selector).*` — these go through the full humanize pipeline. Avoid `page.query_selector()` — `ElementHandle` objects bypass all patches, so mouse movement teleports, keyboard events fire without timing, and scroll has no human curve.
+> **Note (Playwright):** Always use `page.click(selector)`, `page.type(selector, text)`, `page.hover(selector)`, or `page.locator(selector).*` — these go through the full humanize pipeline. Avoid `page.query_selector()` — `ElementHandle` objects bypass all patches, so mouse movement teleports, keyboard events fire without timing, and scroll has no human curve.
+>
+> **Note (Puppeteer):** Both selector-based methods (`page.click()`, `page.type()`) and ElementHandle methods (`el.click()`, `el.type()`) are fully humanized. `page.$()`, `page.$$()`, and `page.waitForSelector()` return patched handles automatically.
 
-> Contributed by [@evelaa123](https://github.com/evelaa123) — full Playwright API coverage.
+> Contributed by [@evelaa123](https://github.com/evelaa123) — full Playwright and Puppeteer API coverage.
 
 ## Configuration
 
@@ -634,7 +645,15 @@ stealth_args = get_default_stealth_args()  # all fingerprint flags
 from cloakbrowser import launch_async
 browser = await launch_async(args=["--remote-debugging-port=9242"])
 # Connect your framework to http://127.0.0.1:9242 — all stealth flags are set
+# Note: humanize requires the wrapper (see below)
 ```
+
+> **Humanize over CDP**: Stealth fingerprint patches work automatically over CDP, but `humanize=True` is a wrapper-level feature. If you connect to CloakBrowser via CDP from a separate script, import the patching functions to add humanization:
+>
+> ```js
+> import { patchBrowser, resolveConfig } from 'cloakbrowser/human';
+> patchBrowser(browser, resolveConfig('default'));
+> ```
 
 | Framework | Stars | Language | Example |
 |-----------|-------|----------|---------|
@@ -652,7 +671,7 @@ browser = await launch_async(args=["--remote-debugging-port=9242"])
 
 | Platform | Chromium | Patches | Status |
 |---|---|---|---|
-| Linux x86_64 | 145 | 48 | ✅ Latest |
+| Linux x86_64 | 146 | 49 | ✅ Latest |
 | Linux arm64 (RPi, Graviton) | 145 | 48 | ✅ |
 | macOS arm64 (Apple Silicon) | 145 | 26 | ✅ |
 | macOS x86_64 (Intel) | 145 | 26 | ✅ |
@@ -917,9 +936,9 @@ export CLOAKBROWSER_BINARY_PATH=/path/to/your/chrome
 
 Install a specific wrapper version to downgrade both the wrapper and the binary it downloads:
 ```bash
-pip install cloakbrowser==0.3.11              # Python
-npm install cloakbrowser@0.3.11               # JavaScript
-docker pull cloakhq/cloakbrowser:0.3.11       # Docker
+pip install cloakbrowser==0.3.21              # Python
+npm install cloakbrowser@0.3.21               # JavaScript
+docker pull cloakhq/cloakbrowser:0.3.21       # Docker
 ```
 Each wrapper version pins its own binary version, so downgrading the wrapper automatically gets you the matching binary on next launch.
 
@@ -1015,7 +1034,7 @@ A: Yes. Pass `proxy="http://user:pass@host:port"` to `launch()`.
 
 | Feature | Status |
 |---------|--------|
-| Linux x64 — Chromium 145 (48 patches) | ✅ Released |
+| Linux x64 — Chromium 146 (49 patches) | ✅ Released |
 | macOS arm64/x64 — Chromium 145 (26 patches) | ✅ Released |
 | Windows x64 — Chromium 145 (33 patches) | ✅ Released |
 | JavaScript/Puppeteer + Playwright support | ✅ Released |
@@ -1039,7 +1058,7 @@ All releases are signed for supply chain verification.
 ```bash
 # Verify GPG signature (binary release tag)
 gpg --keyserver keyserver.ubuntu.com --recv-keys C60C0DDC9D0DE2DD
-git verify-tag chromium-v145.0.7632.159.9
+git verify-tag chromium-v146.0.7680.177.1
 
 # Verify GitHub binary attestation (Sigstore)
 gh attestation verify cloakbrowser-linux-x64.tar.gz --repo CloakHQ/cloakbrowser

@@ -6,6 +6,18 @@ Changes are tagged: **[wrapper]** for Python/JS wrapper, **[binary]** for Chromi
 
 ---
 
+## [0.3.23] — 2026-04-09
+
+- **[wrapper]** Add full Puppeteer humanize support — human-like mouse, keyboard, and scroll behavior for `puppeteer-core` users (thanks [@evelaa123](https://github.com/evelaa123), #129)
+- **[wrapper]** Fix Playwright humanize gaps — `pressSequentially`, `tap`, `clear` on pages and frames now use human-like behavior (#129)
+- **[wrapper]** Expose humanize module for CDP-connected browsers — `import from 'cloakbrowser/human'` for manual patching of external Playwright instances (#126)
+- **[docker]** Fix `cloakserve` locale/timezone mismatch — CLI args now route through `build_args()` so the companion `--lang` flag is added automatically (#130)
+- **[meta]** Use Node 24 in CI publish workflow to work around broken npm in Node 22.22.2
+
+## [0.3.22] — 2026-04-09
+
+- **[binary]** Upgrade Linux x64 build to Chromium 146.0.7680.177.1 — 49 source-level C++ patches (up from 48), rebased from 145.0.7632.x
+
 ## [0.3.21] — 2026-04-07
 
 - **[wrapper]** Remove dead `--disable-blink-features=AutomationControlled` flag -- binary patch 009 already handles `navigator.webdriver` at source level

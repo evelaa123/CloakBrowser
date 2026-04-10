@@ -67,3 +67,8 @@ debug
 publish-docker.sh
 captures
 20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*.txt
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
