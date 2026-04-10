@@ -105,8 +105,10 @@ class TestParseCliArgs:
 
     def test_passthrough_args(self):
         args = ["--no-sandbox", "--disable-gpu", "--fingerprint=999"]
-        _, passthrough = parse_cli_args(args)
-        assert passthrough == args
+        config, passthrough = parse_cli_args(args)
+        # --fingerprint=999 is consumed into config["default_seed"], not passed through
+        assert passthrough == ["--no-sandbox", "--disable-gpu"]
+        assert config["default_seed"] == "999"
 
     def test_port_not_in_passthrough(self):
         _, passthrough = parse_cli_args(["--port=9222", "--no-sandbox"])
