@@ -12,6 +12,14 @@
  * Patches all interaction methods:
  * click, dblclick, hover, type, fill, check, uncheck, selectOption,
  * press, pressSequentially, tap, dragTo, clear + Frame-level equivalents.
+ *
+ * ELEMENTHANDLE-LEVEL:
+ *   click, dblclick, hover, type, fill, press, selectOption,
+ *   check, uncheck, setChecked, tap, focus
+ *   + $, $$, waitForSelector (nested elements are also patched)
+ *
+ * page.$(), page.$$(), page.waitForSelector() and Frame equivalents
+ * return patched ElementHandles automatically.
  */
 
 import type { Browser, BrowserContext, Page, Frame, CDPSession } from 'playwright-core';
@@ -19,11 +27,13 @@ import { HumanConfig, resolveConfig, rand, randRange, sleep } from './config.js'
 import { RawMouse, RawKeyboard, humanMove, humanClick, clickTarget, humanIdle } from './mouse.js';
 import { humanType } from './keyboard.js';
 import { scrollToElement } from './scroll.js';
+import { patchPageElementHandles, patchFrameElementHandles, patchSingleElementHandle } from './elementhandle.js';
 
 export { HumanConfig, resolveConfig } from './config.js';
 export { humanMove, humanClick, clickTarget, humanIdle } from './mouse.js';
 export { humanType } from './keyboard.js';
 export { scrollToElement } from './scroll.js';
+export { patchSingleElementHandle } from './elementhandle.js';
 
 // --- Platform-aware select-all shortcut (macOS uses Meta, others use Control) ---
 const SELECT_ALL = process.platform === 'darwin' ? 'Meta+a' : 'Control+a';
@@ -488,6 +498,9 @@ function patchPage(page: Page, cfg: HumanConfig, cursor: CursorState): void {
 
   // --- Patch Frame-level methods (for sub-frames) ---
   patchFrames(page, cfg, cursor, raw, rawKb, originals, stealth);
+
+  // --- Patch ElementHandle selectors (page.$, page.$$, page.waitForSelector) ---
+  patchPageElementHandles(page, cfg, cursor, raw, rawKb, originals, stealth);
 }
 
 
@@ -511,6 +524,8 @@ function patchFrames(
 ): void {
   for (const frame of iterFrames(page)) {
     patchSingleFrame(frame, page, cfg, originals, stealth);
+    // Patch frame-level ElementHandle selectors ($, $$, waitForSelector)
+    patchFrameElementHandles(frame, page, cfg, cursor, raw, rawKb, originals, stealth);
   }
 }
 

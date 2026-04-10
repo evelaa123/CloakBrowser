@@ -900,6 +900,9 @@ def patch_page(page: Any, cfg: HumanConfig, cursor: _CursorState) -> None:
     # --- Patch Frame-level methods (for sub-frames) ---
     _patch_frames_sync(page, cfg, cursor, raw_mouse, raw_keyboard, originals)
 
+    # --- Patch ElementHandle selectors (query_selector, query_selector_all, wait_for_selector) ---
+    _patch_page_element_handles_sync(page, cfg, cursor, raw_mouse, raw_keyboard, originals, stealth, cdp_session)
+
     # Initialize cursor immediately so it doesn't visibly jump from (0,0)
     cursor.x = rand(cfg.initial_cursor_x[0], cfg.initial_cursor_x[1])
     cursor.y = rand(cfg.initial_cursor_y[0], cfg.initial_cursor_y[1])
@@ -911,6 +914,273 @@ def patch_page(page: Any, cfg: HumanConfig, cursor: _CursorState) -> None:
 
     # --- Patch Locator class (class-level, runs once) ---
     _patch_locator_class_sync()
+
+
+# ============================================================================
+# SYNC ElementHandle patching
+# ============================================================================
+
+
+def _is_input_element_handle_sync(el: Any) -> bool:
+    """Check if an ElementHandle is an input/textarea/contenteditable (sync)."""
+    try:
+        return el.evaluate(
+            """(node) => {
+                const tag = node.tagName ? node.tagName.toLowerCase() : '';
+                return tag === 'input' || tag === 'textarea'
+                    || node.getAttribute && node.getAttribute('contenteditable') === 'true';
+            }"""
+        )
+    except Exception:
+        return False
+
+
+def _patch_single_element_handle_sync(
+    el: Any, page: Any, cfg: HumanConfig, cursor: _CursorState,
+    raw_mouse: RawMouse, raw_keyboard: RawKeyboard, originals: Any,
+    stealth: Any, cdp_session: Any,
+) -> None:
+    """Patch all interaction methods on a sync Playwright ElementHandle."""
+    if getattr(el, '_human_patched', False):
+        return
+    el._human_patched = True
+
+    # Save originals
+    _orig_click = el.click
+    _orig_dblclick = el.dblclick
+    _orig_hover = el.hover
+    _orig_type = el.type
+    _orig_fill = el.fill
+    _orig_press = el.press
+    _orig_select_option = el.select_option
+    _orig_check = el.check
+    _orig_uncheck = el.uncheck
+    _orig_set_checked = getattr(el, 'set_checked', None)
+    _orig_tap = el.tap
+    _orig_focus = el.focus
+
+    # Nested selectors
+    _orig_qs = el.query_selector
+    _orig_qsa = el.query_selector_all
+    _orig_wfs = el.wait_for_selector
+
+    def _patched_qs(selector: str, **kwargs: Any) -> Any:
+        child = _orig_qs(selector, **kwargs)
+        if child is not None:
+            _patch_single_element_handle_sync(
+                child, page, cfg, cursor, raw_mouse, raw_keyboard, originals, stealth, cdp_session
+            )
+        return child
+
+    def _patched_qsa(selector: str, **kwargs: Any) -> Any:
+        children = _orig_qsa(selector, **kwargs)
+        for child in children:
+            _patch_single_element_handle_sync(
+                child, page, cfg, cursor, raw_mouse, raw_keyboard, originals, stealth, cdp_session
+            )
+        return children
+
+    def _patched_wfs(selector: str, **kwargs: Any) -> Any:
+        child = _orig_wfs(selector, **kwargs)
+        if child is not None:
+            _patch_single_element_handle_sync(
+                child, page, cfg, cursor, raw_mouse, raw_keyboard, originals, stealth, cdp_session
+            )
+        return child
+
+    el.query_selector = _patched_qs
+    el.query_selector_all = _patched_qsa
+    el.wait_for_selector = _patched_wfs
+
+    # Helper: move cursor to element
+    def _move_to_element():
+        if not cursor.initialized:
+            cursor.x = rand(cfg.initial_cursor_x[0], cfg.initial_cursor_x[1])
+            cursor.y = rand(cfg.initial_cursor_y[0], cfg.initial_cursor_y[1])
+            originals.mouse_move(cursor.x, cursor.y)
+            cursor.initialized = True
+
+        box = el.bounding_box()
+        if not box:
+            return None
+
+        is_inp = _is_input_element_handle_sync(el)
+        target = click_target(box, is_inp, cfg)
+
+        if cfg.idle_between_actions:
+            human_idle(raw_mouse, rand(cfg.idle_between_duration[0], cfg.idle_between_duration[1]), cursor.x, cursor.y, cfg)
+
+        human_move(raw_mouse, cursor.x, cursor.y, target.x, target.y, cfg)
+        cursor.x = target.x
+        cursor.y = target.y
+        return {'box': box, 'is_inp': is_inp}
+
+    # --- el.click() ---
+    def _human_el_click(**kwargs: Any) -> None:
+        info = _move_to_element()
+        if info is None:
+            return _orig_click(**kwargs)
+        human_click(raw_mouse, info['is_inp'], cfg)
+
+    # --- el.dblclick() ---
+    def _human_el_dblclick(**kwargs: Any) -> None:
+        info = _move_to_element()
+        if info is None:
+            return _orig_dblclick(**kwargs)
+        raw_mouse.down(click_count=2)
+        sleep_ms(rand(30, 60))
+        raw_mouse.up(click_count=2)
+
+    # --- el.hover() ---
+    def _human_el_hover(**kwargs: Any) -> None:
+        info = _move_to_element()
+        if info is None:
+            return _orig_hover(**kwargs)
+        # Just move, no click
+
+    # --- el.type() ---
+    def _human_el_type(text: str, **kwargs: Any) -> None:
+        info = _move_to_element()
+        if info is None:
+            return _orig_type(text, **kwargs)
+        human_click(raw_mouse, info['is_inp'], cfg)
+        sleep_ms(rand(100, 250))
+        human_type(page, raw_keyboard, text, cfg, cdp_session=cdp_session)
+
+    # --- el.fill() ---
+    def _human_el_fill(value: str, **kwargs: Any) -> None:
+        info = _move_to_element()
+        if info is None:
+            return _orig_fill(value, **kwargs)
+        human_click(raw_mouse, info['is_inp'], cfg)
+        sleep_ms(rand(100, 250))
+        originals.keyboard_press(_SELECT_ALL)
+        sleep_ms(rand(30, 80))
+        originals.keyboard_press("Backspace")
+        sleep_ms(rand(50, 150))
+        human_type(page, raw_keyboard, value, cfg, cdp_session=cdp_session)
+
+    # --- el.press() ---
+    def _human_el_press(key: str, **kwargs: Any) -> None:
+        sleep_ms(rand(20, 60))
+        originals.keyboard_down(key)
+        sleep_ms(rand_range(cfg.key_hold))
+        originals.keyboard_up(key)
+
+    # --- el.select_option() ---
+    def _human_el_select_option(value: Any = None, **kwargs: Any) -> Any:
+        info = _move_to_element()
+        if info is None:
+            return _orig_select_option(value, **kwargs)
+        human_click(raw_mouse, False, cfg)
+        sleep_ms(rand(100, 300))
+        return _orig_select_option(value, **kwargs)
+
+    # --- el.check() ---
+    def _human_el_check(**kwargs: Any) -> None:
+        try:
+            if el.is_checked():
+                return
+        except Exception:
+            pass
+        info = _move_to_element()
+        if info is None:
+            return _orig_check(**kwargs)
+        human_click(raw_mouse, info['is_inp'], cfg)
+
+    # --- el.uncheck() ---
+    def _human_el_uncheck(**kwargs: Any) -> None:
+        try:
+            if not el.is_checked():
+                return
+        except Exception:
+            pass
+        info = _move_to_element()
+        if info is None:
+            return _orig_uncheck(**kwargs)
+        human_click(raw_mouse, info['is_inp'], cfg)
+
+    # --- el.set_checked() ---
+    def _human_el_set_checked(checked: bool, **kwargs: Any) -> None:
+        try:
+            current = el.is_checked()
+            if current == checked:
+                return
+        except Exception:
+            pass
+        info = _move_to_element()
+        if info is None and _orig_set_checked:
+            return _orig_set_checked(checked, **kwargs)
+        if info:
+            human_click(raw_mouse, info['is_inp'], cfg)
+
+    # --- el.tap() ---
+    def _human_el_tap(**kwargs: Any) -> None:
+        info = _move_to_element()
+        if info is None:
+            return _orig_tap(**kwargs)
+        human_click(raw_mouse, info['is_inp'], cfg)
+
+    # --- el.focus() ---
+    # FIX: move cursor humanly but use programmatic focus (no click side-effects).
+    # Stock Playwright el.focus() never clicks — it just calls element.focus() in JS.
+    # Clicking would trigger onclick, submit forms, navigate links, etc.
+    def _human_el_focus() -> None:
+        _move_to_element()  # human-like cursor movement (Bézier)
+        _orig_focus()       # programmatic focus, no click side-effects
+
+    el.click = _human_el_click
+    el.dblclick = _human_el_dblclick
+    el.hover = _human_el_hover
+    el.type = _human_el_type
+    el.fill = _human_el_fill
+    el.press = _human_el_press
+    el.select_option = _human_el_select_option
+    el.check = _human_el_check
+    el.uncheck = _human_el_uncheck
+    if _orig_set_checked is not None:
+        el.set_checked = _human_el_set_checked
+    el.tap = _human_el_tap
+    el.focus = _human_el_focus
+
+
+def _patch_page_element_handles_sync(
+    page: Any, cfg: HumanConfig, cursor: _CursorState,
+    raw_mouse: RawMouse, raw_keyboard: RawKeyboard, originals: Any,
+    stealth: Any, cdp_session: Any,
+) -> None:
+    """Patch page.query_selector, query_selector_all, wait_for_selector to return humanized ElementHandles (sync)."""
+    _orig_qs = page.query_selector
+    _orig_qsa = page.query_selector_all
+    _orig_wfs = page.wait_for_selector
+
+    def _patched_qs(selector: str, **kwargs: Any) -> Any:
+        el = _orig_qs(selector, **kwargs)
+        if el is not None:
+            _patch_single_element_handle_sync(
+                el, page, cfg, cursor, raw_mouse, raw_keyboard, originals, stealth, cdp_session
+            )
+        return el
+
+    def _patched_qsa(selector: str, **kwargs: Any) -> Any:
+        els = _orig_qsa(selector, **kwargs)
+        for el in els:
+            _patch_single_element_handle_sync(
+                el, page, cfg, cursor, raw_mouse, raw_keyboard, originals, stealth, cdp_session
+            )
+        return els
+
+    def _patched_wfs(selector: str, **kwargs: Any) -> Any:
+        el = _orig_wfs(selector, **kwargs)
+        if el is not None:
+            _patch_single_element_handle_sync(
+                el, page, cfg, cursor, raw_mouse, raw_keyboard, originals, stealth, cdp_session
+            )
+        return el
+
+    page.query_selector = _patched_qs
+    page.query_selector_all = _patched_qsa
+    page.wait_for_selector = _patched_wfs
 
 
 def _patch_frames_sync(
@@ -1023,6 +1293,58 @@ def _patch_single_frame_sync(
     frame.clear = _frame_clear
     frame.drag_and_drop = _frame_drag_and_drop
 
+    # --- Patch frame-level ElementHandle selectors ---
+    stealth_world = getattr(page, '_stealth_world', None)
+    cdp_session = None
+    if stealth_world is not None:
+        try:
+            cdp_session = stealth_world.get_cdp_session()
+        except Exception:
+            pass
+    _patch_frame_element_handles_sync(
+        frame, page, cfg, cursor, raw_mouse, raw_keyboard, originals, stealth_world, cdp_session
+    )
+
+
+def _patch_frame_element_handles_sync(
+    frame: Any, page: Any, cfg: HumanConfig, cursor: _CursorState,
+    raw_mouse: RawMouse, raw_keyboard: RawKeyboard, originals: Any,
+    stealth: Any, cdp_session: Any,
+) -> None:
+    """Patch frame.query_selector, query_selector_all, wait_for_selector (sync)."""
+    _orig_qs = frame.query_selector
+    _orig_qsa = frame.query_selector_all
+    _orig_wfs = frame.wait_for_selector
+
+    def _patched_qs(selector: str, **kwargs: Any) -> Any:
+        el = _orig_qs(selector, **kwargs)
+        if el is not None:
+            _patch_single_element_handle_sync(
+                el, page, cfg, cursor, raw_mouse, raw_keyboard, originals, stealth, cdp_session
+            )
+        return el
+
+    def _patched_qsa(selector: str, **kwargs: Any) -> Any:
+        els = _orig_qsa(selector, **kwargs)
+        for el in els:
+            _patch_single_element_handle_sync(
+                el, page, cfg, cursor, raw_mouse, raw_keyboard, originals, stealth, cdp_session
+            )
+        return els
+
+    def _patched_wfs(selector: str, **kwargs: Any) -> Any:
+        el = _orig_wfs(selector, **kwargs)
+        if el is not None:
+            _patch_single_element_handle_sync(
+                el, page, cfg, cursor, raw_mouse, raw_keyboard, originals, stealth, cdp_session
+            )
+        return el
+
+    frame.query_selector = _patched_qs
+    frame.query_selector_all = _patched_qsa
+    frame.wait_for_selector = _patched_wfs
+
+
 
 def _iter_frames(page: Any):
     try:
@@ -1108,6 +1430,7 @@ def patch_page_async(page: Any, cfg: HumanConfig, cursor: _CursorState) -> None:
     stealth = _AsyncIsolatedWorld(page)
     page._stealth_world = stealth
     cdp_session_holder: list[Any] = [None]  # mutable container for closure
+    page._cdp_session_holder = cdp_session_holder  # expose for frame-level patching
 
     async def _ensure_cdp() -> Any:
         if cdp_session_holder[0] is None:
@@ -1265,8 +1588,287 @@ def patch_page_async(page: Any, cfg: HumanConfig, cursor: _CursorState) -> None:
     # --- Patch Frame-level methods (for sub-frames) ---
     _patch_frames_async(page, cfg, cursor, raw_mouse, raw_keyboard, originals)
 
+    # --- Patch ElementHandle selectors (query_selector, query_selector_all, wait_for_selector) ---
+    _patch_page_element_handles_async(page, cfg, cursor, raw_mouse, raw_keyboard, originals, stealth, cdp_session_holder)
+
     # --- Patch async Locator class (class-level, runs once) ---
     _patch_locator_class_async()
+
+
+# ============================================================================
+# ASYNC ElementHandle patching
+# ============================================================================
+
+
+async def _async_is_input_element_handle(el: Any) -> bool:
+    """Check if an ElementHandle is an input/textarea/contenteditable (async)."""
+    try:
+        return await el.evaluate(
+            """(node) => {
+                const tag = node.tagName ? node.tagName.toLowerCase() : '';
+                return tag === 'input' || tag === 'textarea'
+                    || node.getAttribute && node.getAttribute('contenteditable') === 'true';
+            }"""
+        )
+    except Exception:
+        return False
+
+
+def _patch_single_element_handle_async(
+    el: Any, page: Any, cfg: HumanConfig, cursor: _CursorState,
+    raw_mouse: AsyncRawMouse, raw_keyboard: AsyncRawKeyboard, originals: Any,
+    stealth: Any, cdp_session_holder: Any,
+) -> None:
+    """Patch all interaction methods on an async Playwright ElementHandle."""
+    if getattr(el, '_human_patched', False):
+        return
+    el._human_patched = True
+
+    # Save originals
+    _orig_click = el.click
+    _orig_dblclick = el.dblclick
+    _orig_hover = el.hover
+    _orig_type = el.type
+    _orig_fill = el.fill
+    _orig_press = el.press
+    _orig_select_option = el.select_option
+    _orig_check = el.check
+    _orig_uncheck = el.uncheck
+    _orig_set_checked = getattr(el, 'set_checked', None)
+    _orig_tap = el.tap
+    _orig_focus = el.focus
+
+    # Nested selectors
+    _orig_qs = el.query_selector
+    _orig_qsa = el.query_selector_all
+    _orig_wfs = el.wait_for_selector
+
+    async def _patched_qs(selector: str, **kwargs: Any) -> Any:
+        child = await _orig_qs(selector, **kwargs)
+        if child is not None:
+            _patch_single_element_handle_async(
+                child, page, cfg, cursor, raw_mouse, raw_keyboard, originals, stealth, cdp_session_holder
+            )
+        return child
+
+    async def _patched_qsa(selector: str, **kwargs: Any) -> Any:
+        children = await _orig_qsa(selector, **kwargs)
+        for child in children:
+            _patch_single_element_handle_async(
+                child, page, cfg, cursor, raw_mouse, raw_keyboard, originals, stealth, cdp_session_holder
+            )
+        return children
+
+    async def _patched_wfs(selector: str, **kwargs: Any) -> Any:
+        child = await _orig_wfs(selector, **kwargs)
+        if child is not None:
+            _patch_single_element_handle_async(
+                child, page, cfg, cursor, raw_mouse, raw_keyboard, originals, stealth, cdp_session_holder
+            )
+        return child
+
+    el.query_selector = _patched_qs
+    el.query_selector_all = _patched_qsa
+    el.wait_for_selector = _patched_wfs
+
+    # Helper: move cursor to element (async)
+    async def _move_to_element():
+        if not cursor.initialized:
+            cursor.x = rand(cfg.initial_cursor_x[0], cfg.initial_cursor_x[1])
+            cursor.y = rand(cfg.initial_cursor_y[0], cfg.initial_cursor_y[1])
+            await originals.mouse_move(cursor.x, cursor.y)
+            cursor.initialized = True
+
+        box = await el.bounding_box()
+        if not box:
+            return None
+
+        is_inp = await _async_is_input_element_handle(el)
+        target = click_target(box, is_inp, cfg)
+
+        if cfg.idle_between_actions:
+            await async_human_idle(raw_mouse, rand(cfg.idle_between_duration[0], cfg.idle_between_duration[1]), cursor.x, cursor.y, cfg)
+
+        await async_human_move(raw_mouse, cursor.x, cursor.y, target.x, target.y, cfg)
+        cursor.x = target.x
+        cursor.y = target.y
+        return {'box': box, 'is_inp': is_inp}
+
+    async def _get_cdp():
+        if cdp_session_holder[0] is None:
+            try:
+                cdp_session_holder[0] = await stealth.get_cdp_session()
+            except Exception:
+                pass
+        return cdp_session_holder[0]
+
+    # --- el.click() ---
+    async def _human_el_click(**kwargs: Any) -> None:
+        info = await _move_to_element()
+        if info is None:
+            return await _orig_click(**kwargs)
+        await async_human_click(raw_mouse, info['is_inp'], cfg)
+
+    # --- el.dblclick() ---
+    async def _human_el_dblclick(**kwargs: Any) -> None:
+        info = await _move_to_element()
+        if info is None:
+            return await _orig_dblclick(**kwargs)
+        await raw_mouse.down(click_count=2)
+        await async_sleep_ms(rand(30, 60))
+        await raw_mouse.up(click_count=2)
+
+    # --- el.hover() ---
+    async def _human_el_hover(**kwargs: Any) -> None:
+        info = await _move_to_element()
+        if info is None:
+            return await _orig_hover(**kwargs)
+
+    # --- el.type() ---
+    async def _human_el_type(text: str, **kwargs: Any) -> None:
+        info = await _move_to_element()
+        if info is None:
+            return await _orig_type(text, **kwargs)
+        await async_human_click(raw_mouse, info['is_inp'], cfg)
+        await async_sleep_ms(rand(100, 250))
+        cdp = await _get_cdp()
+        await async_human_type(page, raw_keyboard, text, cfg, cdp_session=cdp)
+
+    # --- el.fill() ---
+    async def _human_el_fill(value: str, **kwargs: Any) -> None:
+        info = await _move_to_element()
+        if info is None:
+            return await _orig_fill(value, **kwargs)
+        await async_human_click(raw_mouse, info['is_inp'], cfg)
+        await async_sleep_ms(rand(100, 250))
+        await originals.keyboard_press(_SELECT_ALL)
+        await async_sleep_ms(rand(30, 80))
+        await originals.keyboard_press("Backspace")
+        await async_sleep_ms(rand(50, 150))
+        cdp = await _get_cdp()
+        await async_human_type(page, raw_keyboard, value, cfg, cdp_session=cdp)
+
+    # --- el.press() ---
+    async def _human_el_press(key: str, **kwargs: Any) -> None:
+        await async_sleep_ms(rand(20, 60))
+        await originals.keyboard_down(key)
+        await async_sleep_ms(rand_range(cfg.key_hold))
+        await originals.keyboard_up(key)
+
+    # --- el.select_option() ---
+    async def _human_el_select_option(value: Any = None, **kwargs: Any) -> Any:
+        info = await _move_to_element()
+        if info is None:
+            return await _orig_select_option(value, **kwargs)
+        await async_human_click(raw_mouse, False, cfg)
+        await async_sleep_ms(rand(100, 300))
+        return await _orig_select_option(value, **kwargs)
+
+    # --- el.check() ---
+    async def _human_el_check(**kwargs: Any) -> None:
+        try:
+            if await el.is_checked():
+                return
+        except Exception:
+            pass
+        info = await _move_to_element()
+        if info is None:
+            return await _orig_check(**kwargs)
+        await async_human_click(raw_mouse, info['is_inp'], cfg)
+
+    # --- el.uncheck() ---
+    async def _human_el_uncheck(**kwargs: Any) -> None:
+        try:
+            if not await el.is_checked():
+                return
+        except Exception:
+            pass
+        info = await _move_to_element()
+        if info is None:
+            return await _orig_uncheck(**kwargs)
+        await async_human_click(raw_mouse, info['is_inp'], cfg)
+
+    # --- el.set_checked() ---
+    async def _human_el_set_checked(checked: bool, **kwargs: Any) -> None:
+        try:
+            current = await el.is_checked()
+            if current == checked:
+                return
+        except Exception:
+            pass
+        info = await _move_to_element()
+        if info is None and _orig_set_checked:
+            return await _orig_set_checked(checked, **kwargs)
+        if info:
+            await async_human_click(raw_mouse, info['is_inp'], cfg)
+
+    # --- el.tap() ---
+    async def _human_el_tap(**kwargs: Any) -> None:
+        info = await _move_to_element()
+        if info is None:
+            return await _orig_tap(**kwargs)
+        await async_human_click(raw_mouse, info['is_inp'], cfg)
+
+    # --- el.focus() ---
+    # FIX: move cursor humanly but use programmatic focus (no click side-effects).
+    # Stock Playwright el.focus() never clicks — it just calls element.focus() in JS.
+    # Clicking would trigger onclick, submit forms, navigate links, etc.
+    async def _human_el_focus() -> None:
+        await _move_to_element()  # human-like cursor movement (Bézier)
+        await _orig_focus()       # programmatic focus, no click side-effects
+
+    el.click = _human_el_click
+    el.dblclick = _human_el_dblclick
+    el.hover = _human_el_hover
+    el.type = _human_el_type
+    el.fill = _human_el_fill
+    el.press = _human_el_press
+    el.select_option = _human_el_select_option
+    el.check = _human_el_check
+    el.uncheck = _human_el_uncheck
+    if _orig_set_checked is not None:
+        el.set_checked = _human_el_set_checked
+    el.tap = _human_el_tap
+    el.focus = _human_el_focus
+
+
+def _patch_page_element_handles_async(
+    page: Any, cfg: HumanConfig, cursor: _CursorState,
+    raw_mouse: AsyncRawMouse, raw_keyboard: AsyncRawKeyboard, originals: Any,
+    stealth: Any, cdp_session_holder: Any,
+) -> None:
+    """Patch page.query_selector, query_selector_all, wait_for_selector to return humanized ElementHandles (async)."""
+    _orig_qs = page.query_selector
+    _orig_qsa = page.query_selector_all
+    _orig_wfs = page.wait_for_selector
+
+    async def _patched_qs(selector: str, **kwargs: Any) -> Any:
+        el = await _orig_qs(selector, **kwargs)
+        if el is not None:
+            _patch_single_element_handle_async(
+                el, page, cfg, cursor, raw_mouse, raw_keyboard, originals, stealth, cdp_session_holder
+            )
+        return el
+
+    async def _patched_qsa(selector: str, **kwargs: Any) -> Any:
+        els = await _orig_qsa(selector, **kwargs)
+        for el in els:
+            _patch_single_element_handle_async(
+                el, page, cfg, cursor, raw_mouse, raw_keyboard, originals, stealth, cdp_session_holder
+            )
+        return els
+
+    async def _patched_wfs(selector: str, **kwargs: Any) -> Any:
+        el = await _orig_wfs(selector, **kwargs)
+        if el is not None:
+            _patch_single_element_handle_async(
+                el, page, cfg, cursor, raw_mouse, raw_keyboard, originals, stealth, cdp_session_holder
+            )
+        return el
+
+    page.query_selector = _patched_qs
+    page.query_selector_all = _patched_qsa
+    page.wait_for_selector = _patched_wfs
 
 
 def _patch_frames_async(
@@ -1378,6 +1980,53 @@ def _patch_single_frame_async(
     frame.press = _frame_press
     frame.clear = _frame_clear
     frame.drag_and_drop = _frame_drag_and_drop
+
+    # --- Patch frame-level ElementHandle selectors (async) ---
+    stealth_world = getattr(page, '_stealth_world', None)
+    cdp_session_holder = getattr(page, '_cdp_session_holder', [None])
+    _patch_frame_element_handles_async(
+        frame, page, cfg, cursor, raw_mouse, raw_keyboard, originals, stealth_world, cdp_session_holder
+    )
+
+
+def _patch_frame_element_handles_async(
+    frame: Any, page: Any, cfg: HumanConfig, cursor: _CursorState,
+    raw_mouse: AsyncRawMouse, raw_keyboard: AsyncRawKeyboard, originals: Any,
+    stealth: Any, cdp_session_holder: Any,
+) -> None:
+    """Patch frame.query_selector, query_selector_all, wait_for_selector (async)."""
+    _orig_qs = frame.query_selector
+    _orig_qsa = frame.query_selector_all
+    _orig_wfs = frame.wait_for_selector
+
+    async def _patched_qs(selector: str, **kwargs: Any) -> Any:
+        el = await _orig_qs(selector, **kwargs)
+        if el is not None:
+            _patch_single_element_handle_async(
+                el, page, cfg, cursor, raw_mouse, raw_keyboard, originals, stealth, cdp_session_holder
+            )
+        return el
+
+    async def _patched_qsa(selector: str, **kwargs: Any) -> Any:
+        els = await _orig_qsa(selector, **kwargs)
+        for el in els:
+            _patch_single_element_handle_async(
+                el, page, cfg, cursor, raw_mouse, raw_keyboard, originals, stealth, cdp_session_holder
+            )
+        return els
+
+    async def _patched_wfs(selector: str, **kwargs: Any) -> Any:
+        el = await _orig_wfs(selector, **kwargs)
+        if el is not None:
+            _patch_single_element_handle_async(
+                el, page, cfg, cursor, raw_mouse, raw_keyboard, originals, stealth, cdp_session_holder
+            )
+        return el
+
+    frame.query_selector = _patched_qs
+    frame.query_selector_all = _patched_qsa
+    frame.wait_for_selector = _patched_wfs
+
 
 
 def patch_context_async(context: Any, cfg: HumanConfig) -> None:

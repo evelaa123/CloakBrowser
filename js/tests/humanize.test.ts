@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { resolveConfig, rand, randRange, sleep } from "../src/human/config.js";
 import { humanMove, humanClick, clickTarget, humanIdle } from "../src/human/mouse.js";
+import { patchPageElementHandles } from "../src/human/elementhandle.js";
 
 // =========================================================================
 // Config resolution
@@ -687,6 +688,349 @@ describe("humanType non-ASCII", () => {
   });
 });
 
+
+
+// =========================================================================
+// ElementHandle patching (Playwright)
+// =========================================================================
+
+function buildMockElementHandle(overrides: Record<string, any> = {}): any {
+  const el: any = {
+    click: vi.fn(async () => {}),
+    dblclick: vi.fn(async () => {}),
+    hover: vi.fn(async () => {}),
+    type: vi.fn(async () => {}),
+    fill: vi.fn(async () => {}),
+    press: vi.fn(async () => {}),
+    selectOption: vi.fn(async () => {}),
+    check: vi.fn(async () => {}),
+    uncheck: vi.fn(async () => {}),
+    setChecked: vi.fn(async () => {}),
+    tap: vi.fn(async () => {}),
+    focus: vi.fn(async () => {}),
+    boundingBox: overrides.boundingBox ?? vi.fn(async () => ({ x: 100, y: 100, width: 200, height: 30 })),
+    evaluate: overrides.evaluate ?? vi.fn(async () => false),
+    isChecked: overrides.isChecked ?? vi.fn(async () => false),
+    $: vi.fn(async () => null),
+    $$: vi.fn(async () => []),
+    waitForSelector: vi.fn(async () => null),
+    _humanPatched: false,
+  };
+  return el;
+}
+
+describe("patchSingleElementHandle", () => {
+  it("marks element as patched", async () => {
+    const { patchSingleElementHandle } = await import("../src/human/elementhandle.js");
+    const cfg = resolveConfig("default");
+    const cursor = { x: 100, y: 100, initialized: true };
+    const raw = {
+      move: vi.fn(async () => {}),
+      down: vi.fn(async () => {}),
+      up: vi.fn(async () => {}),
+      wheel: vi.fn(async () => {}),
+    };
+    const rawKb = {
+      down: vi.fn(async () => {}),
+      up: vi.fn(async () => {}),
+      type: vi.fn(async () => {}),
+      insertText: vi.fn(async () => {}),
+    };
+    const originals = {
+      keyboardPress: vi.fn(async () => {}),
+      keyboardDown: vi.fn(async () => {}),
+      keyboardUp: vi.fn(async () => {}),
+    };
+
+    const el = buildMockElementHandle();
+    const page = buildMockPage();
+
+    patchSingleElementHandle(el, page as any, cfg, cursor as any, raw, rawKb, originals, null);
+
+    expect(el._humanPatched).toBe(true);
+  });
+
+  it("el.click calls mouse.move and mouse.down/up (humanized path)", async () => {
+    const { patchSingleElementHandle } = await import("../src/human/elementhandle.js");
+    const cfg = resolveConfig("default", { idle_between_actions: false });
+    const cursor = { x: 50, y: 50, initialized: true };
+
+    let moveCount = 0;
+    let downCalled = false;
+    let upCalled = false;
+    const raw = {
+      move: vi.fn(async () => { moveCount++; }),
+      down: vi.fn(async () => { downCalled = true; }),
+      up: vi.fn(async () => { upCalled = true; }),
+      wheel: vi.fn(async () => {}),
+    };
+    const rawKb = {
+      down: vi.fn(async () => {}),
+      up: vi.fn(async () => {}),
+      type: vi.fn(async () => {}),
+      insertText: vi.fn(async () => {}),
+    };
+    const originals = {
+      keyboardPress: vi.fn(async () => {}),
+      keyboardDown: vi.fn(async () => {}),
+      keyboardUp: vi.fn(async () => {}),
+    };
+
+    const el = buildMockElementHandle();
+    const page = buildMockPage();
+    (page as any)._ensureCursorInit = vi.fn(async () => {});
+
+    patchSingleElementHandle(el, page as any, cfg, cursor as any, raw, rawKb, originals, null);
+
+    await el.click();
+
+    expect(moveCount).toBeGreaterThan(0);
+    expect(downCalled).toBe(true);
+    expect(upCalled).toBe(true);
+  }, 30000);
+
+  it("el.hover calls mouse.move but NOT down/up", async () => {
+    const { patchSingleElementHandle } = await import("../src/human/elementhandle.js");
+    const cfg = resolveConfig("default", { idle_between_actions: false });
+    const cursor = { x: 50, y: 50, initialized: true };
+
+    let downCalled = false;
+    const raw = {
+      move: vi.fn(async () => {}),
+      down: vi.fn(async () => { downCalled = true; }),
+      up: vi.fn(async () => {}),
+      wheel: vi.fn(async () => {}),
+    };
+    const rawKb = {
+      down: vi.fn(async () => {}),
+      up: vi.fn(async () => {}),
+      type: vi.fn(async () => {}),
+      insertText: vi.fn(async () => {}),
+    };
+    const originals = { keyboardPress: vi.fn(async () => {}), keyboardDown: vi.fn(async () => {}), keyboardUp: vi.fn(async () => {}) };
+
+    const el = buildMockElementHandle();
+    const page = buildMockPage();
+    (page as any)._ensureCursorInit = vi.fn(async () => {});
+
+    patchSingleElementHandle(el, page as any, cfg, cursor as any, raw, rawKb, originals, null);
+
+    await el.hover();
+
+    expect(raw.move).toHaveBeenCalled();
+    expect(downCalled).toBe(false);
+  }, 30000);
+
+  it("el.type triggers mouse move + click + keyboard events", async () => {
+    const { patchSingleElementHandle } = await import("../src/human/elementhandle.js");
+    const cfg = resolveConfig("default", { idle_between_actions: false, mistype_chance: 0 });
+    const cursor = { x: 50, y: 50, initialized: true };
+
+    const raw = {
+      move: vi.fn(async () => {}),
+      down: vi.fn(async () => {}),
+      up: vi.fn(async () => {}),
+      wheel: vi.fn(async () => {}),
+    };
+    const rawKb = {
+      down: vi.fn(async () => {}),
+      up: vi.fn(async () => {}),
+      type: vi.fn(async () => {}),
+      insertText: vi.fn(async () => {}),
+    };
+    const originals = { keyboardPress: vi.fn(async () => {}), keyboardDown: vi.fn(async () => {}), keyboardUp: vi.fn(async () => {}) };
+
+    const el = buildMockElementHandle({ evaluate: vi.fn(async () => true) }); // isInput = true
+    const page = buildMockPage();
+    (page as any)._ensureCursorInit = vi.fn(async () => {});
+
+    patchSingleElementHandle(el, page as any, cfg, cursor as any, raw, rawKb, originals, null);
+
+    await el.type("abc");
+
+    expect(raw.move).toHaveBeenCalled();
+    expect(raw.down).toHaveBeenCalled(); // click to focus
+    expect(rawKb.down).toHaveBeenCalled(); // keyboard typing
+  }, 30000);
+
+  it("el.fill calls selectAll + backspace + type", async () => {
+    const { patchSingleElementHandle } = await import("../src/human/elementhandle.js");
+    const cfg = resolveConfig("default", { idle_between_actions: false, mistype_chance: 0 });
+    const cursor = { x: 50, y: 50, initialized: true };
+
+    const pressedKeys: string[] = [];
+    const raw = {
+      move: vi.fn(async () => {}),
+      down: vi.fn(async () => {}),
+      up: vi.fn(async () => {}),
+      wheel: vi.fn(async () => {}),
+    };
+    const rawKb = {
+      down: vi.fn(async () => {}),
+      up: vi.fn(async () => {}),
+      type: vi.fn(async () => {}),
+      insertText: vi.fn(async () => {}),
+    };
+    const originals = {
+      keyboardPress: vi.fn(async (key: string) => { pressedKeys.push(key); }),
+      keyboardDown: vi.fn(async () => {}),
+      keyboardUp: vi.fn(async () => {}),
+    };
+
+    const el = buildMockElementHandle({ evaluate: vi.fn(async () => true) });
+    const page = buildMockPage();
+    (page as any)._ensureCursorInit = vi.fn(async () => {});
+
+    patchSingleElementHandle(el, page as any, cfg, cursor as any, raw, rawKb, originals, null);
+
+    await el.fill("newtext");
+
+    const expected = process.platform === "darwin" ? "Meta+a" : "Control+a";
+    expect(pressedKeys).toContain(expected);
+    expect(pressedKeys).toContain("Backspace");
+  }, 30000);
+
+  it("no double patching", async () => {
+    const { patchSingleElementHandle } = await import("../src/human/elementhandle.js");
+    const cfg = resolveConfig("default");
+    const cursor = { x: 0, y: 0, initialized: false };
+    const raw = { move: vi.fn(async () => {}), down: vi.fn(async () => {}), up: vi.fn(async () => {}), wheel: vi.fn(async () => {}) };
+    const rawKb = { down: vi.fn(async () => {}), up: vi.fn(async () => {}), type: vi.fn(async () => {}), insertText: vi.fn(async () => {}) };
+    const originals = { keyboardPress: vi.fn(async () => {}), keyboardDown: vi.fn(async () => {}), keyboardUp: vi.fn(async () => {}) };
+
+    const el = buildMockElementHandle();
+    const page = buildMockPage();
+
+    patchSingleElementHandle(el, page as any, cfg, cursor as any, raw, rawKb, originals, null);
+    const firstClick = el.click;
+
+    patchSingleElementHandle(el, page as any, cfg, cursor as any, raw, rawKb, originals, null);
+
+    expect(el.click).toBe(firstClick);
+  });
+
+  it("nested $() returns patched child handle", async () => {
+    const { patchSingleElementHandle } = await import("../src/human/elementhandle.js");
+    const cfg = resolveConfig("default");
+    const cursor = { x: 0, y: 0, initialized: false };
+    const raw = { move: vi.fn(async () => {}), down: vi.fn(async () => {}), up: vi.fn(async () => {}), wheel: vi.fn(async () => {}) };
+    const rawKb = { down: vi.fn(async () => {}), up: vi.fn(async () => {}), type: vi.fn(async () => {}), insertText: vi.fn(async () => {}) };
+    const originals = { keyboardPress: vi.fn(async () => {}), keyboardDown: vi.fn(async () => {}), keyboardUp: vi.fn(async () => {}) };
+
+    const child = buildMockElementHandle();
+    const el = buildMockElementHandle();
+    el.$ = vi.fn(async () => child);
+
+    const page = buildMockPage();
+
+    patchSingleElementHandle(el, page as any, cfg, cursor as any, raw, rawKb, originals, null);
+
+    const result = await el.$("span");
+    expect(result._humanPatched).toBe(true);
+  });
+});
+
+describe("patchPageElementHandles", () => {
+  it("page.$() returns patched ElementHandle", async () => {
+    const { patchPageElementHandles } = await import("../src/human/elementhandle.js");
+    const cfg = resolveConfig("default");
+    const cursor = { x: 0, y: 0, initialized: false };
+    const raw = { move: vi.fn(async () => {}), down: vi.fn(async () => {}), up: vi.fn(async () => {}), wheel: vi.fn(async () => {}) };
+    const rawKb = { down: vi.fn(async () => {}), up: vi.fn(async () => {}), type: vi.fn(async () => {}), insertText: vi.fn(async () => {}) };
+    const originals = { keyboardPress: vi.fn(async () => {}), keyboardDown: vi.fn(async () => {}), keyboardUp: vi.fn(async () => {}) };
+
+    const el = buildMockElementHandle();
+    const page = buildMockPage();
+    (page as any).$ = vi.fn(async () => el);
+    (page as any).$$ = vi.fn(async () => [el]);
+    (page as any).waitForSelector = vi.fn(async () => el);
+
+    patchPageElementHandles(page as any, cfg, cursor as any, raw, rawKb, originals, null);
+
+    const result = await (page as any).$("#test");
+    expect(result._humanPatched).toBe(true);
+  });
+
+  it("page.$$() returns all patched handles", async () => {
+    const { patchPageElementHandles } = await import("../src/human/elementhandle.js");
+    const cfg = resolveConfig("default");
+    const cursor = { x: 0, y: 0, initialized: false };
+    const raw = { move: vi.fn(async () => {}), down: vi.fn(async () => {}), up: vi.fn(async () => {}), wheel: vi.fn(async () => {}) };
+    const rawKb = { down: vi.fn(async () => {}), up: vi.fn(async () => {}), type: vi.fn(async () => {}), insertText: vi.fn(async () => {}) };
+    const originals = { keyboardPress: vi.fn(async () => {}), keyboardDown: vi.fn(async () => {}), keyboardUp: vi.fn(async () => {}) };
+
+    const el1 = buildMockElementHandle();
+    const el2 = buildMockElementHandle();
+    const page = buildMockPage();
+    (page as any).$ = vi.fn(async () => null);
+    (page as any).$$ = vi.fn(async () => [el1, el2]);
+    (page as any).waitForSelector = vi.fn(async () => null);
+
+    patchPageElementHandles(page as any, cfg, cursor as any, raw, rawKb, originals, null);
+
+    const results = await (page as any).$$("div");
+    expect(results[0]._humanPatched).toBe(true);
+    expect(results[1]._humanPatched).toBe(true);
+  });
+
+  it("page.waitForSelector() returns patched handle", async () => {
+    const { patchPageElementHandles } = await import("../src/human/elementhandle.js");
+    const cfg = resolveConfig("default");
+    const cursor = { x: 0, y: 0, initialized: false };
+    const raw = { move: vi.fn(async () => {}), down: vi.fn(async () => {}), up: vi.fn(async () => {}), wheel: vi.fn(async () => {}) };
+    const rawKb = { down: vi.fn(async () => {}), up: vi.fn(async () => {}), type: vi.fn(async () => {}), insertText: vi.fn(async () => {}) };
+    const originals = { keyboardPress: vi.fn(async () => {}), keyboardDown: vi.fn(async () => {}), keyboardUp: vi.fn(async () => {}) };
+
+    const el = buildMockElementHandle();
+    const page = buildMockPage();
+    (page as any).$ = vi.fn(async () => null);
+    (page as any).$$ = vi.fn(async () => []);
+    (page as any).waitForSelector = vi.fn(async () => el);
+
+    patchPageElementHandles(page as any, cfg, cursor as any, raw, rawKb, originals, null);
+
+    const result = await (page as any).waitForSelector("#test");
+    expect(result._humanPatched).toBe(true);
+  });
+
+  it("page.$() returns null when no element found (no crash)", async () => {
+    const { patchPageElementHandles } = await import("../src/human/elementhandle.js");
+    const cfg = resolveConfig("default");
+    const cursor = { x: 0, y: 0, initialized: false };
+    const raw = { move: vi.fn(async () => {}), down: vi.fn(async () => {}), up: vi.fn(async () => {}), wheel: vi.fn(async () => {}) };
+    const rawKb = { down: vi.fn(async () => {}), up: vi.fn(async () => {}), type: vi.fn(async () => {}), insertText: vi.fn(async () => {}) };
+    const originals = { keyboardPress: vi.fn(async () => {}), keyboardDown: vi.fn(async () => {}), keyboardUp: vi.fn(async () => {}) };
+
+    const page = buildMockPage();
+    (page as any).$ = vi.fn(async () => null);
+    (page as any).$$ = vi.fn(async () => []);
+    (page as any).waitForSelector = vi.fn(async () => null);
+
+    patchPageElementHandles(page as any, cfg, cursor as any, raw, rawKb, originals, null);
+
+    const result = await (page as any).$("#nonexistent");
+    expect(result).toBeNull();
+  });
+});
+
+describe("patchPage integrates ElementHandle patching", () => {
+  it("patchPage patches page.$ automatically", async () => {
+    const { patchPage } = await import("../src/human/index.js");
+
+    const el = buildMockElementHandle();
+    const page = buildMockPage();
+    (page as any).$ = vi.fn(async () => el);
+    (page as any).$$ = vi.fn(async () => []);
+    (page as any).waitForSelector = vi.fn(async () => null);
+
+    const cfg = resolveConfig("default");
+    const cursor = { x: 100, y: 100, initialized: true };
+    patchPage(page as any, cfg, cursor as any);
+
+    const result = await (page as any).$("#test");
+    expect(result._humanPatched).toBe(true);
+  });
+});
 
 
 function buildMockFrame(): any {
