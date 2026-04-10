@@ -280,6 +280,67 @@ if __name__ == "__main__":
     time.sleep(1)
 
     # ============================================================
+    # SCENARIO 7: ElementHandle — query_selector interactions
+    # ============================================================
+    step("ElementHandle — query_selector click, type, fill, hover")
+    page.goto('https://www.wikipedia.org', wait_until='domcontentloaded')
+    time.sleep(2)
+    inject(page)
+    time.sleep(1)
+
+    print("  Watch: get element via query_selector, cursor moves smoothly")
+    el = page.query_selector('#searchInput')
+    assert el is not None, "query_selector returned None"
+    assert getattr(el, '_human_patched', False), "ElementHandle not patched!"
+
+    t0 = time.time()
+    el.click()
+    eh_click_ms = int((time.time() - t0) * 1000)
+    check("ElementHandle click", eh_click_ms > 100, f"{eh_click_ms} ms")
+    time.sleep(0.5)
+
+    print("  Watch: ElementHandle type — characters appear one by one")
+    t0 = time.time()
+    el.type('ElementHandle typing')
+    eh_type_ms = int((time.time() - t0) * 1000)
+    val = page.locator('#searchInput').input_value()
+    check("ElementHandle type", val == 'ElementHandle typing' and eh_type_ms > 1500, f"{eh_type_ms} ms, value='{val}'")
+    time.sleep(0.5)
+
+    print("  Watch: ElementHandle fill — clears then types")
+    t0 = time.time()
+    el.fill('Filled via EH')
+    eh_fill_ms = int((time.time() - t0) * 1000)
+    val = page.locator('#searchInput').input_value()
+    check("ElementHandle fill", val == 'Filled via EH' and eh_fill_ms > 1000, f"{eh_fill_ms} ms, value='{val}'")
+    time.sleep(0.5)
+
+    print("  Watch: ElementHandle hover — cursor moves without clicking")
+    btn_el = page.query_selector('button[type="submit"]')
+    t0 = time.time()
+    btn_el.hover()
+    eh_hover_ms = int((time.time() - t0) * 1000)
+    check("ElementHandle hover", eh_hover_ms > 50, f"{eh_hover_ms} ms")
+    time.sleep(0.5)
+
+    print("  Watch: query_selector_all returns patched handles")
+    page.goto('https://the-internet.herokuapp.com/checkboxes', wait_until='domcontentloaded')
+    time.sleep(2)
+    inject(page)
+    time.sleep(1)
+    els = page.query_selector_all('input[type="checkbox"]')
+    all_patched = all(getattr(e, '_human_patched', False) for e in els)
+    check("query_selector_all all patched", all_patched and len(els) >= 2, f"{len(els)} elements, all_patched={all_patched}")
+
+    if els:
+        print("  Watch: click checkbox via ElementHandle")
+        t0 = time.time()
+        els[0].click()
+        cb_click_ms = int((time.time() - t0) * 1000)
+        check("ElementHandle checkbox click", cb_click_ms > 100, f"{cb_click_ms} ms")
+    time.sleep(1)
+
+    # ============================================================
     # SUMMARY
     # ============================================================
     print("\n" + "=" * 70)

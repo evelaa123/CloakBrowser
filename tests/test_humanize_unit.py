@@ -12,7 +12,7 @@ Can also run directly: python tests/test_humanize_unit.py
 import math
 import time
 import sys
-
+import asyncio
 import pytest
 
 
@@ -535,7 +535,7 @@ class TestNonAsciiKeyboardAsync:
 class TestBrowserFill:
     def test_fill_clears_existing(self):
         from cloakbrowser import launch
-        browser = launch(headless=True, humanize=True)
+        browser = launch(headless=False, humanize=True)
         page = browser.new_page()
         page.goto('https://www.wikipedia.org', wait_until='domcontentloaded')
         time.sleep(1)
@@ -550,7 +550,7 @@ class TestBrowserFill:
 
     def test_fill_timing_humanized(self):
         from cloakbrowser import launch
-        browser = launch(headless=True, humanize=True)
+        browser = launch(headless=False, humanize=True)
         page = browser.new_page()
         page.goto('https://www.wikipedia.org', wait_until='domcontentloaded')
         time.sleep(1)
@@ -562,7 +562,7 @@ class TestBrowserFill:
 
     def test_clear_empties_field(self):
         from cloakbrowser import launch
-        browser = launch(headless=True, humanize=True)
+        browser = launch(headless=False, humanize=True)
         page = browser.new_page()
         page.goto('https://www.wikipedia.org', wait_until='domcontentloaded')
         time.sleep(1)
@@ -579,7 +579,7 @@ class TestBrowserFill:
 class TestBrowserPatching:
     def test_page_has_original(self):
         from cloakbrowser import launch
-        browser = launch(headless=True, humanize=True)
+        browser = launch(headless=False, humanize=True)
         page = browser.new_page()
         assert hasattr(page, '_original')
         assert hasattr(page, '_human_cfg')
@@ -587,7 +587,7 @@ class TestBrowserPatching:
 
     def test_locator_methods_patched(self):
         from cloakbrowser import launch
-        browser = launch(headless=True, humanize=True)
+        browser = launch(headless=False, humanize=True)
         page = browser.new_page()
         from playwright.sync_api._generated import Locator
         methods = ['fill', 'click', 'type', 'dblclick', 'hover', 'check', 'uncheck',
@@ -608,7 +608,7 @@ class TestBrowserPatching:
 
     def test_page_human_cfg_persists(self):
         from cloakbrowser import launch
-        browser = launch(headless=True, humanize=True)
+        browser = launch(headless=False, humanize=True)
         page = browser.new_page()
         assert page._human_cfg is not None
         assert hasattr(page._human_cfg, 'idle_between_actions')
@@ -618,7 +618,7 @@ class TestBrowserPatching:
 
 @pytest.mark.slow
 class TestBrowserBotDetection:
-    PROXY = ''
+    PROXY = None
 
     def test_behavioral_checks_pass(self):
         from cloakbrowser import launch
@@ -644,7 +644,7 @@ class TestBrowserBotDetection:
 
     def test_form_timing(self):
         from cloakbrowser import launch
-        browser = launch(headless=True, humanize=True, proxy=self.PROXY, geoip=True)
+        browser = launch(headless=False, humanize=True, proxy=self.PROXY, geoip=True)
         page = browser.new_page()
         page.goto('https://deviceandbrowserinfo.com/are_you_a_bot_interactions',
                    wait_until='domcontentloaded')
@@ -661,31 +661,639 @@ class TestBrowserBotDetection:
 
 @pytest.mark.slow
 class TestAsyncEndToEnd:
-    def test_async_launch_click_fill(self):
+    @pytest.mark.asyncio
+    async def test_async_launch_click_fill(self):
         """launch_async(humanize=True) — async page.click and page.fill work end-to-end."""
-        import asyncio
         from cloakbrowser import launch_async
+        
+        browser = await launch_async(headless=False, humanize=True)
+        page = await browser.new_page()
+        assert hasattr(page, '_original'), "async page not patched"
+        assert hasattr(page, '_human_cfg'), "async page missing _human_cfg"
 
-        async def _run():
-            browser = await launch_async(headless=True, humanize=True)
-            page = await browser.new_page()
-            assert hasattr(page, '_original'), "async page not patched"
-            assert hasattr(page, '_human_cfg'), "async page missing _human_cfg"
+        await page.goto('https://www.wikipedia.org', wait_until='domcontentloaded')
+        await asyncio.sleep(1)
 
-            await page.goto('https://www.wikipedia.org', wait_until='domcontentloaded')
-            await asyncio.sleep(1)
+        t0 = time.time()
+        await page.locator('#searchInput').fill('async test')
+        elapsed_ms = int((time.time() - t0) * 1000)
+        assert elapsed_ms > 500, f"async fill too fast: {elapsed_ms}ms"
 
-            t0 = time.time()
-            await page.locator('#searchInput').fill('async test')
-            elapsed_ms = int((time.time() - t0) * 1000)
-            assert elapsed_ms > 500, f"async fill too fast: {elapsed_ms}ms"
+        val = await page.locator('#searchInput').input_value()
+        assert val == 'async test', f"async fill wrong value: {val}"
 
-            val = await page.locator('#searchInput').input_value()
-            assert val == 'async test', f"async fill wrong value: {val}"
+        await browser.close()
 
-            await browser.close()
 
-        asyncio.run(_run())
+# =========================================================================
+# 12. ElementHandle patching — SYNC
+# =========================================================================
+
+class TestElementHandlePatchingSync:
+    """Test that ElementHandle objects returned by query_selector etc. are humanized."""
+
+    def test_patch_single_element_handle_marks_patched(self):
+        from cloakbrowser.human import _patch_single_element_handle_sync, _CursorState
+        from cloakbrowser.human.config import resolve_config
+        from unittest.mock import MagicMock
+
+        cfg = resolve_config("default", None)
+        cursor = _CursorState()
+        cursor.initialized = True
+        cursor.x = 100
+        cursor.y = 100
+        page = MagicMock()
+        page._original = MagicMock()
+        el = MagicMock()
+        el._human_patched = False
+        el.bounding_box = MagicMock(return_value={"x": 50, "y": 50, "width": 100, "height": 30})
+        el.evaluate = MagicMock(return_value=True)  # is_input
+        el.is_checked = MagicMock(return_value=False)
+        el.query_selector = MagicMock(return_value=None)
+        el.query_selector_all = MagicMock(return_value=[])
+        el.wait_for_selector = MagicMock(return_value=None)
+
+        raw_mouse = MagicMock()
+        raw_keyboard = MagicMock()
+
+        _patch_single_element_handle_sync(
+            el, page, cfg, cursor, raw_mouse, raw_keyboard, page._original, None, None
+        )
+
+        assert el._human_patched is True
+
+    def test_element_handle_click_calls_human_move(self):
+        from cloakbrowser.human import _patch_single_element_handle_sync, _CursorState
+        from cloakbrowser.human.config import resolve_config
+        from unittest.mock import MagicMock
+
+        cfg = resolve_config("default", {"idle_between_actions": False})
+        cursor = _CursorState()
+        cursor.initialized = True
+        cursor.x = 100
+        cursor.y = 100
+        page = MagicMock()
+        page._original = MagicMock()
+
+        el = MagicMock()
+        el._human_patched = False
+        el.bounding_box = MagicMock(return_value={"x": 200, "y": 200, "width": 100, "height": 30})
+        el.evaluate = MagicMock(return_value=False)
+        el.is_checked = MagicMock(return_value=False)
+        el.query_selector = MagicMock(return_value=None)
+        el.query_selector_all = MagicMock(return_value=[])
+        el.wait_for_selector = MagicMock(return_value=None)
+
+        raw_mouse = MagicMock()
+        raw_mouse.move = MagicMock()
+        raw_mouse.down = MagicMock()
+        raw_mouse.up = MagicMock()
+        raw_mouse.wheel = MagicMock()
+        raw_keyboard = MagicMock()
+
+        _patch_single_element_handle_sync(
+            el, page, cfg, cursor, raw_mouse, raw_keyboard, page._original, None, None
+        )
+
+        # Call the patched click
+        el.click()
+
+        # Should call raw_mouse.move (Bezier path) and then down/up
+        assert raw_mouse.move.called
+        assert raw_mouse.down.called
+        assert raw_mouse.up.called
+
+    def test_element_handle_hover_moves_cursor_without_click(self):
+        from cloakbrowser.human import _patch_single_element_handle_sync, _CursorState
+        from cloakbrowser.human.config import resolve_config
+        from unittest.mock import MagicMock
+
+        cfg = resolve_config("default", {"idle_between_actions": False})
+        cursor = _CursorState()
+        cursor.initialized = True
+        cursor.x = 50
+        cursor.y = 50
+        page = MagicMock()
+        page._original = MagicMock()
+
+        el = MagicMock()
+        el._human_patched = False
+        el.bounding_box = MagicMock(return_value={"x": 200, "y": 200, "width": 100, "height": 30})
+        el.evaluate = MagicMock(return_value=False)
+        el.is_checked = MagicMock(return_value=False)
+        el.query_selector = MagicMock(return_value=None)
+        el.query_selector_all = MagicMock(return_value=[])
+        el.wait_for_selector = MagicMock(return_value=None)
+
+        raw_mouse = MagicMock()
+        raw_mouse.move = MagicMock()
+        raw_mouse.down = MagicMock()
+        raw_mouse.up = MagicMock()
+        raw_mouse.wheel = MagicMock()
+        raw_keyboard = MagicMock()
+
+        _patch_single_element_handle_sync(
+            el, page, cfg, cursor, raw_mouse, raw_keyboard, page._original, None, None
+        )
+
+        el.hover()
+
+        # Move should be called, but NOT down/up (hover, not click)
+        assert raw_mouse.move.called
+        assert not raw_mouse.down.called
+
+    def test_element_handle_type_calls_human_type(self):
+        from cloakbrowser.human import _patch_single_element_handle_sync, _CursorState
+        from cloakbrowser.human.config import resolve_config
+        from unittest.mock import MagicMock
+
+        cfg = resolve_config("default", {"idle_between_actions": False, "mistype_chance": 0})
+        cursor = _CursorState()
+        cursor.initialized = True
+        cursor.x = 50
+        cursor.y = 50
+        page = MagicMock()
+        originals = MagicMock()
+        page._original = originals
+
+        el = MagicMock()
+        el._human_patched = False
+        el.bounding_box = MagicMock(return_value={"x": 200, "y": 200, "width": 100, "height": 30})
+        el.evaluate = MagicMock(return_value=True)  # is input
+        el.is_checked = MagicMock(return_value=False)
+        el.query_selector = MagicMock(return_value=None)
+        el.query_selector_all = MagicMock(return_value=[])
+        el.wait_for_selector = MagicMock(return_value=None)
+
+        raw_mouse = MagicMock()
+        raw_mouse.move = MagicMock()
+        raw_mouse.down = MagicMock()
+        raw_mouse.up = MagicMock()
+        raw_mouse.wheel = MagicMock()
+        raw_keyboard = MagicMock()
+        raw_keyboard.down = MagicMock()
+        raw_keyboard.up = MagicMock()
+        raw_keyboard.insert_text = MagicMock()
+
+        _patch_single_element_handle_sync(
+            el, page, cfg, cursor, raw_mouse, raw_keyboard, originals, None, None
+        )
+
+        el.type("hello")
+
+        # Mouse moved + clicked (to focus), then keyboard used
+        assert raw_mouse.move.called
+        assert raw_mouse.down.called  # click to focus the input
+        # Keyboard events should have fired (down/up for ASCII chars)
+        assert raw_keyboard.down.called or raw_keyboard.insert_text.called
+
+    def test_element_handle_fill_clears_and_types(self):
+        from cloakbrowser.human import _patch_single_element_handle_sync, _CursorState
+        from cloakbrowser.human.config import resolve_config
+        from unittest.mock import MagicMock, call
+
+        cfg = resolve_config("default", {"idle_between_actions": False, "mistype_chance": 0})
+        cursor = _CursorState()
+        cursor.initialized = True
+        cursor.x = 50
+        cursor.y = 50
+        page = MagicMock()
+        originals = MagicMock()
+        page._original = originals
+
+        pressed_keys = []
+        originals.keyboard_press = MagicMock(side_effect=lambda k: pressed_keys.append(k))
+
+        el = MagicMock()
+        el._human_patched = False
+        el.bounding_box = MagicMock(return_value={"x": 200, "y": 200, "width": 100, "height": 30})
+        el.evaluate = MagicMock(return_value=True)
+        el.is_checked = MagicMock(return_value=False)
+        el.query_selector = MagicMock(return_value=None)
+        el.query_selector_all = MagicMock(return_value=[])
+        el.wait_for_selector = MagicMock(return_value=None)
+
+        raw_mouse = MagicMock()
+        raw_mouse.move = MagicMock()
+        raw_mouse.down = MagicMock()
+        raw_mouse.up = MagicMock()
+        raw_mouse.wheel = MagicMock()
+        raw_keyboard = MagicMock()
+        raw_keyboard.down = MagicMock()
+        raw_keyboard.up = MagicMock()
+        raw_keyboard.insert_text = MagicMock()
+
+        _patch_single_element_handle_sync(
+            el, page, cfg, cursor, raw_mouse, raw_keyboard, originals, None, None
+        )
+
+        el.fill("replaced")
+
+        # Should have pressed Select-All and Backspace to clear
+        import sys
+        expected_select = "Meta+a" if sys.platform == "darwin" else "Control+a"
+        assert expected_select in pressed_keys
+        assert "Backspace" in pressed_keys
+
+    def test_element_handle_no_double_patching(self):
+        from cloakbrowser.human import _patch_single_element_handle_sync, _CursorState
+        from cloakbrowser.human.config import resolve_config
+        from unittest.mock import MagicMock
+
+        cfg = resolve_config("default", None)
+        cursor = _CursorState()
+        page = MagicMock()
+        page._original = MagicMock()
+        el = MagicMock()
+        el._human_patched = False
+        el.query_selector = MagicMock(return_value=None)
+        el.query_selector_all = MagicMock(return_value=[])
+        el.wait_for_selector = MagicMock(return_value=None)
+
+        _patch_single_element_handle_sync(
+            el, page, cfg, cursor, MagicMock(), MagicMock(), page._original, None, None
+        )
+
+        # Save patched click
+        first_click = el.click
+
+        # Try to patch again
+        _patch_single_element_handle_sync(
+            el, page, cfg, cursor, MagicMock(), MagicMock(), page._original, None, None
+        )
+
+        # Should be the same — no double wrap
+        assert el.click is first_click
+
+    def test_nested_query_selector_returns_patched_handle(self):
+        from cloakbrowser.human import _patch_single_element_handle_sync, _CursorState
+        from cloakbrowser.human.config import resolve_config
+        from unittest.mock import MagicMock
+
+        cfg = resolve_config("default", None)
+        cursor = _CursorState()
+        page = MagicMock()
+        page._original = MagicMock()
+
+        child = MagicMock()
+        child._human_patched = False
+        child.bounding_box = MagicMock(return_value={"x": 10, "y": 10, "width": 50, "height": 30})
+        child.evaluate = MagicMock(return_value=False)
+        child.is_checked = MagicMock(return_value=False)
+        child.query_selector = MagicMock(return_value=None)
+        child.query_selector_all = MagicMock(return_value=[])
+        child.wait_for_selector = MagicMock(return_value=None)
+
+        el = MagicMock()
+        el._human_patched = False
+        el.bounding_box = MagicMock(return_value={"x": 50, "y": 50, "width": 100, "height": 30})
+        el.evaluate = MagicMock(return_value=False)
+        el.is_checked = MagicMock(return_value=False)
+        el.query_selector = MagicMock(return_value=child)
+        el.query_selector_all = MagicMock(return_value=[])
+        el.wait_for_selector = MagicMock(return_value=None)
+
+        _patch_single_element_handle_sync(
+            el, page, cfg, cursor, MagicMock(), MagicMock(), page._original, None, None
+        )
+
+        result = el.query_selector("span")
+        assert result._human_patched is True
+
+    def test_page_query_selector_patched(self):
+        from cloakbrowser.human import _patch_page_element_handles_sync, _patch_single_element_handle_sync, _CursorState
+        from cloakbrowser.human.config import resolve_config
+        from unittest.mock import MagicMock
+
+        cfg = resolve_config("default", None)
+        cursor = _CursorState()
+
+        el = MagicMock()
+        el._human_patched = False
+        el.bounding_box = MagicMock(return_value={"x": 50, "y": 50, "width": 100, "height": 30})
+        el.evaluate = MagicMock(return_value=False)
+        el.is_checked = MagicMock(return_value=False)
+        el.query_selector = MagicMock(return_value=None)
+        el.query_selector_all = MagicMock(return_value=[])
+        el.wait_for_selector = MagicMock(return_value=None)
+
+        page = MagicMock()
+        page._original = MagicMock()
+        page.query_selector = MagicMock(return_value=el)
+        page.query_selector_all = MagicMock(return_value=[el])
+        page.wait_for_selector = MagicMock(return_value=el)
+
+        _patch_page_element_handles_sync(
+            page, cfg, cursor, MagicMock(), MagicMock(), page._original, None, None
+        )
+
+        result = page.query_selector("#test")
+        assert result._human_patched is True
+
+    def test_page_query_selector_all_patches_all(self):
+        from cloakbrowser.human import _patch_page_element_handles_sync, _CursorState
+        from cloakbrowser.human.config import resolve_config
+        from unittest.mock import MagicMock
+
+        cfg = resolve_config("default", None)
+        cursor = _CursorState()
+
+        def make_el():
+            e = MagicMock()
+            e._human_patched = False
+            e.bounding_box = MagicMock(return_value={"x": 10, "y": 10, "width": 50, "height": 30})
+            e.evaluate = MagicMock(return_value=False)
+            e.is_checked = MagicMock(return_value=False)
+            e.query_selector = MagicMock(return_value=None)
+            e.query_selector_all = MagicMock(return_value=[])
+            e.wait_for_selector = MagicMock(return_value=None)
+            return e
+
+        el1, el2, el3 = make_el(), make_el(), make_el()
+
+        page = MagicMock()
+        page._original = MagicMock()
+        page.query_selector = MagicMock(return_value=None)
+        page.query_selector_all = MagicMock(return_value=[el1, el2, el3])
+        page.wait_for_selector = MagicMock(return_value=None)
+
+        _patch_page_element_handles_sync(
+            page, cfg, cursor, MagicMock(), MagicMock(), page._original, None, None
+        )
+
+        results = page.query_selector_all("div")
+        for r in results:
+            assert r._human_patched is True
+
+    def test_wait_for_selector_patched(self):
+        from cloakbrowser.human import _patch_page_element_handles_sync, _CursorState
+        from cloakbrowser.human.config import resolve_config
+        from unittest.mock import MagicMock
+
+        cfg = resolve_config("default", None)
+        cursor = _CursorState()
+
+        el = MagicMock()
+        el._human_patched = False
+        el.bounding_box = MagicMock(return_value={"x": 50, "y": 50, "width": 100, "height": 30})
+        el.evaluate = MagicMock(return_value=False)
+        el.is_checked = MagicMock(return_value=False)
+        el.query_selector = MagicMock(return_value=None)
+        el.query_selector_all = MagicMock(return_value=[])
+        el.wait_for_selector = MagicMock(return_value=None)
+
+        page = MagicMock()
+        page._original = MagicMock()
+        page.query_selector = MagicMock(return_value=None)
+        page.query_selector_all = MagicMock(return_value=[])
+        page.wait_for_selector = MagicMock(return_value=el)
+
+        _patch_page_element_handles_sync(
+            page, cfg, cursor, MagicMock(), MagicMock(), page._original, None, None
+        )
+
+        result = page.wait_for_selector("#test")
+        assert result._human_patched is True
+
+    def test_element_handle_all_methods_patched(self):
+        """Verify all expected interaction methods are replaced."""
+        from cloakbrowser.human import _patch_single_element_handle_sync, _CursorState
+        from cloakbrowser.human.config import resolve_config
+        from unittest.mock import MagicMock
+
+        cfg = resolve_config("default", None)
+        cursor = _CursorState()
+        page = MagicMock()
+        page._original = MagicMock()
+
+        el = MagicMock()
+        el._human_patched = False
+        el.bounding_box = MagicMock(return_value={"x": 50, "y": 50, "width": 100, "height": 30})
+        el.evaluate = MagicMock(return_value=False)
+        el.is_checked = MagicMock(return_value=False)
+        el.query_selector = MagicMock(return_value=None)
+        el.query_selector_all = MagicMock(return_value=[])
+        el.wait_for_selector = MagicMock(return_value=None)
+        el.set_checked = MagicMock()  # ensure it exists
+
+        _patch_single_element_handle_sync(
+            el, page, cfg, cursor, MagicMock(), MagicMock(), page._original, None, None
+        )
+
+        expected_methods = ['click', 'dblclick', 'hover', 'type', 'fill', 'press',
+                            'select_option', 'check', 'uncheck', 'set_checked',
+                            'tap', 'focus', 'query_selector', 'query_selector_all',
+                            'wait_for_selector']
+        for method in expected_methods:
+            fn = getattr(el, method)
+            assert not isinstance(fn, MagicMock), f"el.{method} was not patched"
+
+
+# =========================================================================
+# 13. ElementHandle patching — ASYNC
+# =========================================================================
+
+class TestElementHandlePatchingAsync:
+    @pytest.mark.asyncio
+    async def test_async_element_handle_click(self):
+        from cloakbrowser.human import _patch_single_element_handle_async, _CursorState
+        from cloakbrowser.human.config import resolve_config
+        from unittest.mock import MagicMock, AsyncMock
+
+        cfg = resolve_config("default", {"idle_between_actions": False})
+        cursor = _CursorState()
+        cursor.initialized = True
+        cursor.x = 100
+        cursor.y = 100
+
+        page = MagicMock()
+        originals = MagicMock()
+        originals.mouse_move = AsyncMock()
+        page._original = originals
+
+        el = MagicMock()
+        el._human_patched = False
+        el.bounding_box = AsyncMock(return_value={"x": 200, "y": 200, "width": 100, "height": 30})
+        el.evaluate = AsyncMock(return_value=False)
+        el.is_checked = AsyncMock(return_value=False)
+        el.query_selector = AsyncMock(return_value=None)
+        el.query_selector_all = AsyncMock(return_value=[])
+        el.wait_for_selector = AsyncMock(return_value=None)
+
+        raw_mouse = MagicMock()
+        raw_mouse.move = AsyncMock()
+        raw_mouse.down = AsyncMock()
+        raw_mouse.up = AsyncMock()
+        raw_mouse.wheel = AsyncMock()
+        raw_keyboard = MagicMock()
+        raw_keyboard.down = AsyncMock()
+        raw_keyboard.up = AsyncMock()
+        raw_keyboard.insert_text = AsyncMock()
+
+        stealth = MagicMock()
+        stealth.get_cdp_session = AsyncMock(return_value=None)
+
+        _patch_single_element_handle_async(
+            el, page, cfg, cursor, raw_mouse, raw_keyboard, originals, stealth, [None]
+        )
+
+        await el.click()
+
+        assert raw_mouse.move.called
+        assert raw_mouse.down.called
+        assert raw_mouse.up.called
+
+    @pytest.mark.asyncio
+    async def test_async_page_query_selector_patched(self):
+        from cloakbrowser.human import _patch_page_element_handles_async, _CursorState
+        from cloakbrowser.human.config import resolve_config
+        from unittest.mock import MagicMock, AsyncMock
+
+        cfg = resolve_config("default", None)
+        cursor = _CursorState()
+
+        el = MagicMock()
+        el._human_patched = False
+        el.bounding_box = AsyncMock(return_value={"x": 50, "y": 50, "width": 100, "height": 30})
+        el.evaluate = AsyncMock(return_value=False)
+        el.is_checked = AsyncMock(return_value=False)
+        el.query_selector = AsyncMock(return_value=None)
+        el.query_selector_all = AsyncMock(return_value=[])
+        el.wait_for_selector = AsyncMock(return_value=None)
+
+        page = MagicMock()
+        page._original = MagicMock()
+        page.query_selector = AsyncMock(return_value=el)
+        page.query_selector_all = AsyncMock(return_value=[el])
+        page.wait_for_selector = AsyncMock(return_value=el)
+
+        stealth = MagicMock()
+        stealth.get_cdp_session = AsyncMock(return_value=None)
+
+        _patch_page_element_handles_async(
+            page, cfg, cursor, MagicMock(), MagicMock(), page._original, stealth, [None]
+        )
+
+        result = await page.query_selector("#test")
+        assert result._human_patched is True
+
+
+# =========================================================================
+# 14. SLOW: Browser ElementHandle end-to-end
+# =========================================================================
+
+@pytest.mark.slow
+class TestBrowserElementHandle:
+    def test_query_selector_click_humanized(self):
+        """page.query_selector() returns a patched handle — el.click() uses human curves."""
+        from cloakbrowser import launch
+        browser = launch(headless=False, humanize=True)
+        page = browser.new_page()
+        page.goto('https://www.wikipedia.org', wait_until='domcontentloaded')
+        time.sleep(1)
+
+        el = page.query_selector('#searchInput')
+        assert el is not None
+        assert getattr(el, '_human_patched', False), "ElementHandle not patched"
+
+        t0 = time.time()
+        el.click()
+        click_ms = int((time.time() - t0) * 1000)
+        assert click_ms > 100, f"ElementHandle click too fast: {click_ms}ms (not humanized)"
+        browser.close()
+
+    def test_query_selector_type_humanized(self):
+        """el.type() should type character-by-character with human timing."""
+        from cloakbrowser import launch
+        browser = launch(headless=False, humanize=True)
+        page = browser.new_page()
+        page.goto('https://www.wikipedia.org', wait_until='domcontentloaded')
+        time.sleep(1)
+
+        el = page.query_selector('#searchInput')
+        assert el is not None
+
+        t0 = time.time()
+        el.type('ElementHandle test')
+        type_ms = int((time.time() - t0) * 1000)
+        assert type_ms > 1000, f"ElementHandle type too fast: {type_ms}ms"
+
+        val = page.locator('#searchInput').input_value()
+        assert val == 'ElementHandle test'
+        browser.close()
+
+    def test_query_selector_fill_humanized(self):
+        """el.fill() should clear + type with human timing."""
+        from cloakbrowser import launch
+        browser = launch(headless=False, humanize=True)
+        page = browser.new_page()
+        page.goto('https://www.wikipedia.org', wait_until='domcontentloaded')
+        time.sleep(1)
+
+        el = page.query_selector('#searchInput')
+        el.type('initial')
+        time.sleep(0.3)
+
+        t0 = time.time()
+        el.fill('replaced')
+        fill_ms = int((time.time() - t0) * 1000)
+        assert fill_ms > 500, f"ElementHandle fill too fast: {fill_ms}ms"
+
+        val = page.locator('#searchInput').input_value()
+        assert val == 'replaced'
+        browser.close()
+
+    def test_query_selector_all_returns_patched(self):
+        """page.query_selector_all() returns all handles patched."""
+        from cloakbrowser import launch
+        browser = launch(headless=False, humanize=True)
+        page = browser.new_page()
+        page.goto('https://the-internet.herokuapp.com/checkboxes', wait_until='domcontentloaded')
+        time.sleep(1)
+
+        els = page.query_selector_all('input[type="checkbox"]')
+        assert len(els) >= 2
+        for el in els:
+            assert getattr(el, '_human_patched', False), "ElementHandle not patched"
+        browser.close()
+
+    def test_query_selector_hover_humanized(self):
+        """el.hover() should move cursor with human Bezier curve."""
+        from cloakbrowser import launch
+        browser = launch(headless=False, humanize=True)
+        page = browser.new_page()
+        page.goto('https://www.wikipedia.org', wait_until='domcontentloaded')
+        time.sleep(1)
+
+        el = page.query_selector('#searchInput')
+        t0 = time.time()
+        el.hover()
+        hover_ms = int((time.time() - t0) * 1000)
+        assert hover_ms > 50, f"ElementHandle hover too fast: {hover_ms}ms"
+        browser.close()
+
+
+@pytest.mark.slow
+class TestAsyncElementHandle:
+    @pytest.mark.asyncio
+    async def test_async_query_selector_click(self):
+        from cloakbrowser import launch_async
+        
+        browser = await launch_async(headless=False, humanize=True)
+        page = await browser.new_page()
+        await page.goto('https://www.wikipedia.org', wait_until='domcontentloaded')
+        await asyncio.sleep(1)
+
+        el = await page.query_selector('#searchInput')
+        assert el is not None
+        assert getattr(el, '_human_patched', False), "Async ElementHandle not patched"
+
+        t0 = time.time()
+        await el.click()
+        click_ms = int((time.time() - t0) * 1000)
+        assert click_ms > 100, f"Async ElementHandle click too fast: {click_ms}ms"
+
+        await browser.close()
 
 
 # =========================================================================
