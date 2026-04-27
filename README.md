@@ -703,6 +703,12 @@ browser = await launch_async(args=["--remote-debugging-port=9242"])
 | [undetected-chromedriver](https://github.com/ultrafunkamsterdam/undetected-chromedriver) | 12K | Python | [`undetected_chromedriver.py`](examples/integrations/undetected_chromedriver.py) |
 | [agent-browser](https://github.com/nichochar/agent-browser) | — | Shell | [`agent_browser.sh`](examples/integrations/agent_browser.sh) |
 
+### Deployment Integrations
+
+| Platform | Example |
+|----------|---------|
+| [AWS Lambda](https://aws.amazon.com/lambda/) | [`aws_lambda/`](examples/integrations/aws_lambda/) — One-shot scrapes in Lambda (container image) |
+
 ## Platforms
 
 | Platform | Chromium | Patches | Status |
@@ -1153,3 +1159,4 @@ Issues and PRs welcome. If something isn't working, [open an issue](https://gith
 - [@yahooguntu](https://github.com/yahooguntu) — persistent contexts
 - [@kitiho](https://github.com/kitiho) — null viewport fix
 - [@eofreternal](https://github.com/eofreternal) — humanConfig type fix
+- [@AlexTech314](https://github.com/AlexTech314) — AWS Lambda integration
