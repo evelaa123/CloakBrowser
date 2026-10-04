@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>automation detection probe</title>
+<script>
+// Everything a page script (anti-bot) can observe about how automation touched
+// the page. Installed before any other script, collected in window.__detect.
+(function () {
+  const d = { events: [], customEvents: [], qs: [], stackHits: [], activeReads: 0,
+              listenersAdded: [], mutations: 0 };
+  window.__detect = d;
+
+  // 1. Page-visible CustomEvents (Playwright marks targets with these).
+  for (const name of ['__playwright_mark_target__', '__playwright_reset_targets__',
+                      '__playwright_global_listeners_check__']) {
+    window.addEventListener(name, () => d.customEvents.push(name), true);
+  }
+
+  // 2. Main-world DOM API proxies with stack inspection (vector from #108/#110).
+  const wrap = (obj, key, label) => {
+    const orig = obj[key];
+    obj[key] = function (...args) {
+      const stack = new Error().stack || '';
+      if (/eval at evaluate|UtilityScript|__playwright/.test(stack)) d.stackHits.push(label);
+      d.qs.push(label + ':' + String(args[0]).slice(0, 40));
+      return orig.apply(this, args);
+    };
+  };
+  wrap(Document.prototype, 'querySelector', 'qs');
+  wrap(Document.prototype, 'querySelectorAll', 'qsa');
+  wrap(Document.prototype, 'elementFromPoint', 'efp');
+  wrap(Element.prototype, 'getBoundingClientRect', 'gbcr');
+  const ae = Object.getOwnPropertyDescriptor(Document.prototype, 'activeElement');
+  Object.defineProperty(Document.prototype, 'activeElement', {
+    configurable: true, get() { d.activeReads++; return ae.get.call(this); } });
+
+  // 3. Who registers capture listeners on window (Playwright's hit-target
+  //    interceptor lives in its utility world; this only sees the main world).
+  const origAdd = EventTarget.prototype.addEventListener;
+  EventTarget.prototype.addEventListener = function (type, fn, opts) {
+    if (this === window && /^(pointer|mouse|click|auxclick|dblclick|contextmenu)/.test(type)) {
+      d.listenersAdded.push(type);
+    }
+    return origAdd.call(this, type, fn, opts);
+  };
+
+  // 4. Trusted-ness and order of input events, plus whether any were blocked.
+  for (const t of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'mousemove']) {
+    origAdd.call(document, t, (e) => {
+      if (t !== 'mousemove' || d.events.length < 400)
+        d.events.push({ t, trusted: e.isTrusted, x: e.clientX, y: e.clientY,
+                        prevented: e.defaultPrevented });
+    }, true);
+  }
+
+  // 5. DOM mutations caused by automation.
+  new MutationObserver((m) => { d.mutations += m.length; })
+    .observe(document, { subtree: true, childList: true, attributes: true });
+
+  window.__resetDetect = () => {
+    d.events.length = 0; d.customEvents.length = 0; d.qs.length = 0; d.stackHits.length = 0;
+    d.activeReads = 0; d.listenersAdded.length = 0; d.mutations = 0;
+  };
+})();
+</script>
+<style>body{margin:0;font:14px sans-serif} button{margin:40px;min-width:160px;min-height:40px}</style>
+</head>
+<body>
+<button id="btn">Press me</button>
+<input id="inp" value="x">
+<div style="height:2000px"></div>
+<button id="far">far</button>
+</body>
+</html>
