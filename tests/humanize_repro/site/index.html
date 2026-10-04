@@ -1,0 +1,58 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>humanize repro</title>
+<script src="hooks.js"></script>
+<script src="recorder.js"></script>
+<style>
+  body { margin: 0; font: 14px sans-serif; }
+  section { padding: 8px 12px; border-bottom: 1px solid #ddd; }
+  input, select, button, textarea { font: inherit; margin: 2px 6px 2px 0; }
+  button { min-width: 140px; min-height: 36px; }
+  #neg { position: absolute; top: -600px; left: -600px; }
+  .wrap { position: relative; display: inline-block; }
+  .over { position: absolute; inset: 0; background: rgba(255,0,0,.3); }
+</style>
+</head>
+<body>
+<!-- Fixtures for the humanize repro suites (Python, JS, .NET). -->
+<section id="text">
+  <h4>Text inputs</h4>
+  <input id="name" value="firstname">
+  <input id="long" value="hello world">
+  <!-- Masked field: the page strips anything that is not hex (card/IBAN/serial-style mask). -->
+  <input id="hex" oninput="this.value=this.value.replace(/[^0-9a-f]/gi,'')">
+  <textarea id="ta">old text</textarea>
+</section>
+<section id="special">
+  <h4>Non-text inputs</h4>
+  <input id="date" type="date">
+  <input id="range" type="range" min="0" max="100" value="10">
+  <input id="color" type="color" value="#000000">
+</section>
+<section id="focus">
+  <h4>Focus targets</h4>
+  <input id="fa" placeholder="A (focused first)">
+  <input id="fb" placeholder="B (handle target)">
+</section>
+<section id="buttons">
+  <h4>Buttons</h4>
+  <button id="btn">Press me</button>
+  <button class="dup" id="dup1">Duplicate</button>
+  <button class="dup" id="dup2">Duplicate</button>
+  <input id="chk" type="checkbox">
+  <select id="sel"><option value="a">a</option><option value="b">b</option></select>
+</section>
+<section id="covered-sec">
+  <h4>Covered button (transparent overlay on top)</h4>
+  <span class="wrap"><button id="covered">covered</button><div class="over" id="over"></div></span>
+</section>
+<input id="neg" name="neg">
+<section id="frames">
+  <h4>Frame</h4>
+  <iframe id="frame" name="f" src="frame.html" style="width:420px;height:200px"></iframe>
+</section>
+<div style="height:200px"></div>
+</body>
+</html>

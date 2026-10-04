@@ -71,3 +71,6 @@ captures
 .antigravitycli
 .plans
 .pi
+
+# Humanize repro fixture pages (overrides the generic site/ ignore above)
+!tests/humanize_repro/site/
