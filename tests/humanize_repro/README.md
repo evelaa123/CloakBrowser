@@ -21,6 +21,7 @@ The suites are opt-in, so the regular CI run is unaffected.
 | `site/index.html` | text / non-text inputs, masked field, focus targets, buttons, duplicates, covered button, off-viewport input, iframe |
 | `site/frame.html` | iframe content: input, covered button, target below the frame fold |
 | `site/recorder.js` | records every input event (trusted flag, coords, button, detail, modifiers, key, inputType) into `window.__log`; live panel when opened by hand |
+| `site/detect.html` | page that records every automation trace a site script can see |
 | `site/hooks.js` | main-world probes (`getAttribute('contenteditable')`, `document.activeElement`, `elementFromPoint`, `document.querySelector`) into `window.__mainWorldHits` |
 
 Open it by hand: `python -m http.server -d tests/humanize_repro/site 8000`.
@@ -41,3 +42,21 @@ CLOAKBROWSER_HUMANIZE_REPRO=1 dotnet test dotnet/tests/CloakBrowser.Tests -c Rel
 
 Note for sandboxes where `/tmp` is a small tmpfs: export `TMPDIR` to a disk path,
 Chromium profiles fill it quickly.
+
+## Detection evidence (`test_repro_detection.py`)
+
+Explains *why* the humanize layer resolves elements in its own isolated world
+instead of asking Playwright. Measured with a page script only:
+
+* every Playwright lookup that returns geometry or runs checks
+  (`bounding_box`, `wait_for`, `evaluate`, `query_selector`, `scroll_into_view_if_needed`,
+  `get_by_role`, `is_enabled`, `click(trial=True)`, `click`, `focus`) is visible to
+  the page: Playwright installs listeners in the page's main world (the stack names
+  `addHitTargetInterceptorListeners`) and/or fires `__playwright_mark_target__`
+  events;
+* the humanized selector pipeline (`page.click/fill/check`, `locator.click/press`)
+  leaves no trace;
+* humanized `ElementHandle` and frame paths do leave the trace (BUG);
+* an isolated world inside an iframe, and resolving a node into an isolated world
+  by `backendNodeId`, both work without any trace - this is how those two leaks can
+  be fixed.
